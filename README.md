@@ -14,7 +14,7 @@ The calling workflow [.github/workflows/ci-cd.yml](.github/workflows/ci-cd.yml) 
 
 #### PR Checks (`pull_request`)
 1. **Lint Check**: Checks python code formatting using `flake8`.
-2. **SonarQube Scan**: Validates code quality and safety.
+2. **SonarCloud Scan**: Validates code quality and safety.
 3. **Snyk Scan**: Scans python library dependencies for CVEs.
 4. **Notifications**: Sends Slack notifications with the results.
 
@@ -58,10 +58,9 @@ Add these secrets to your GitHub repository under `Settings` -> `Secrets and var
 4. Copy the generated Webhook URL (starts with `https://hooks.slack.com/services/`).
 5. Save this as `SLACK_WEBHOOK` in your repository secrets.
 
-### 4. SonarQube & Snyk Secrets
+### 4. SonarCloud & Snyk Secrets
 *Optional. Configure these to enable static code security analysis and library scanning.*
 - `SONAR_TOKEN`: API token generated from SonarCloud (`My Account` -> `Security`).
-- `SONAR_URL`: SonarQube host URL (defaults to `https://sonarcloud.io`).
 - `SONAR_KEY`: (Optional) Custom Sonar project key (defaults to `ArchGenTf_architecture-service`).
 - `SNYK_TOKEN`: Snyk API token generated from Snyk account settings.
 
