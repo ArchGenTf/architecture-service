@@ -1,0 +1,195 @@
+provider "google" {
+  project = var.gcp_project_id
+  region  = var.gcp_region
+}
+
+# Base Network
+resource "google_compute_network" "vpc_network" {
+  name                    = "${var.gcp_project_id}-vpc"
+  auto_create_subnetworks = false
+}
+
+{% set ns = namespace(has_subnets=false) %}
+{% for node in nodes %}
+  {% if node.type == 'SubnetGroupNode' %}
+    {% set ns.has_subnets = true %}
+  {% endif %}
+{% endfor %}
+
+{% macro get_subnet_name(node) -%}
+  {%- if node.parentNode -%}
+    {{- node.parentNode | sanitize_id -}}
+  {%- else -%}
+    subnetapp
+  {%- endif -%}
+{%- endmacro %}
+
+# Subnets mapped from the visual architecture canvas
+{% if ns.has_subnets %}
+{% for node in nodes %}
+{% if node.type == 'SubnetGroupNode' %}
+{% set safe_id = node.id | sanitize_id %}
+resource "google_compute_subnetwork" "{{ safe_id }}" {
+  name          = "snet-{{ safe_id }}"
+  ip_cidr_range = {% if node.id in subnet_cidrs %}"{{ subnet_cidrs[node.id] }}"
+                  {% elif (node.id | lower) in subnet_cidrs %}"{{ subnet_cidrs[node.id | lower] }}"
+                  {% elif 'ingress' in node.id %}"{{ subnet_cidrs['subnet-ingress'] }}"
+                  {% elif 'app' in node.id %}"{{ subnet_cidrs['subnet-app'] }}"
+                  {% elif 'data' in node.id %}"{{ subnet_cidrs['subnet-data'] }}"
+                  {% elif 'mgmt' in node.id %}"{{ subnet_cidrs['subnet-mgmt'] }}"
+                  {% elif 'pe' in node.id %}"{{ subnet_cidrs['subnet-pe'] }}"
+                  {% else %}"10.0.10.0/24"
+                  {% endif %}
+  region        = var.gcp_region
+  network       = google_compute_network.vpc_network.id
+}
+{% endif %}
+{% endfor %}
+{% else %}
+resource "google_compute_subnetwork" "subnetapp" {
+  name          = "snet-app"
+  ip_cidr_range = "{{ subnet_cidrs['subnet-app'] }}"
+  region        = var.gcp_region
+  network       = google_compute_network.vpc_network.id
+}
+{% endif %}
+
+{% for node in nodes %}
+{% set safe_id = node.id | sanitize_id %}
+
+{% if node.type == 'GatewayNode' %}
+# Load Balancing & Cloud Armor
+resource "google_compute_global_forwarding_rule" "default_{{ safe_id }}" {
+  name       = "fwd-rule-{{ safe_id }}"
+  target     = google_compute_target_http_proxy.default_{{ safe_id }}.id
+  port_range = "80"
+}
+resource "google_compute_target_http_proxy" "default_{{ safe_id }}" {
+  name    = "http-proxy-{{ safe_id }}"
+  target   = google_compute_target_http_proxy.default_{{ safe_id }}.id
+  url_map = google_compute_url_map.default_{{ safe_id }}.id
+}
+resource "google_compute_url_map" "default_{{ safe_id }}" {
+  name            = "url-map-{{ safe_id }}"
+  default_service = google_compute_backend_service.default_{{ safe_id }}.id
+}
+resource "google_compute_backend_service" "default_{{ safe_id }}" {
+  name                  = "backend-service-{{ safe_id }}"
+  protocol              = "HTTP"
+  load_balancing_scheme = "EXTERNAL"
+}
+
+{% elif node.type == 'FrontendNode' %}
+# Cloud Storage for Static Hosting
+resource "google_storage_bucket" "frontend_{{ safe_id }}" {
+  name          = "${var.gcp_project_id}-frontend-{{ safe_id }}"
+  location      = "US"
+  force_destroy = true
+  website {
+    main_page_suffix = "index.html"
+    not_found_page   = "404.html"
+  }
+}
+resource "google_storage_bucket_iam_binding" "public_read_{{ safe_id }}" {
+  bucket = google_storage_bucket.frontend_{{ safe_id }}.name
+  role   = "roles/storage.objectViewer"
+  members = [
+    "allUsers",
+  ]
+}
+
+{% elif node.type == 'BackendNode' %}
+{% if node.id == 'aks-cluster' or 'gke' in node.id or 'k8s' in node.id %}
+# GKE Autopilot Managed Cluster
+resource "google_container_cluster" "gke_{{ safe_id }}" {
+  name     = "gke-{{ safe_id }}"
+  location = var.gcp_region
+  network    = google_compute_network.vpc_network.name
+  subnetwork = google_compute_subnetwork.{{ get_subnet_name(node) }}.name
+
+  enable_autopilot = true
+}
+{% elif node.id == 'aks-system' or node.id == 'aks-user' %}
+# GKE node pools are managed automatically by Google in Autopilot mode.
+{% else %}
+# Cloud Run Compute
+resource "google_cloud_run_service" "default_{{ safe_id }}" {
+  name     = "cloudrun-{{ safe_id }}"
+  location = var.gcp_region
+
+  template {
+    spec {
+      containers {
+        image = "gcr.io/cloudrun/hello"
+      }
+    }
+  }
+
+  traffic {
+    percent         = 100
+    latest_revision = true
+  }
+}
+{% endif %}
+
+{% elif node.type == 'DatabaseNode' %}
+# Cloud SQL PostgreSQL
+resource "google_sql_database_instance" "default_{{ safe_id }}" {
+  name             = "cloudsql-{{ safe_id }}"
+  database_version = "POSTGRES_14"
+  region           = var.gcp_region
+
+  settings {
+    tier = "db-f1-micro"
+    ip_configuration {
+      ipv4_enabled    = false
+      private_network = google_compute_network.vpc_network.id
+    }
+  }
+  deletion_protection = false
+}
+
+{% elif node.type == 'CacheNode' %}
+# Memorystore Redis
+resource "google_redis_instance" "default_{{ safe_id }}" {
+  name           = "redis-{{ safe_id }}"
+  memory_size_gb = 1
+  region         = var.gcp_region
+  redis_version  = "REDIS_6_X"
+  authorized_network = google_compute_network.vpc_network.id
+}
+
+{% elif node.type == 'StorageNode' %}
+# Cloud Storage
+resource "google_storage_bucket" "storage_{{ safe_id }}" {
+  name          = "${var.gcp_project_id}-storage-{{ safe_id }}"
+  location      = "US"
+  force_destroy = true
+}
+
+{% elif node.type == 'SecurityNode' %}
+{% if node.id.startswith('pe-') %}
+# Private Service Connect (PSC) for Google API/services access
+resource "google_compute_service_attachment" "pe_{{ safe_id }}" {
+  name                  = "psc-attachment-{{ safe_id }}"
+  region                = var.gcp_region
+  target_service        = {% if 'db' in node.id %} google_sql_database_instance.default_dbprimary.self_link
+                          {% elif 'kv' in node.id %} google_secret_manager_secret.vault_keyvault.self_link
+                          {% elif 'storage' in node.id %} google_storage_bucket.storage_blob.self_link
+                          {% else %} google_secret_manager_secret.vault_keyvault.self_link
+                          {% endif %}
+  connection_preference = "ACCEPT_AUTOMATIC"
+}
+{% else %}
+# Secret Manager
+resource "google_secret_manager_secret" "vault_{{ safe_id }}" {
+  secret_id = "vault-{{ safe_id }}"
+
+  replication {
+    automatic = true
+  }
+}
+{% endif %}
+
+{% endif %}
+{% endfor %}

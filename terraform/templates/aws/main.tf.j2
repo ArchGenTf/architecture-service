@@ -1,0 +1,359 @@
+provider "aws" {
+  region = var.aws_region
+}
+
+# Base Network
+resource "aws_vpc" "main" {
+  cidr_block           = "{{ vnet_cidr }}"
+  enable_dns_hostnames = true
+  enable_dns_support   = true
+  tags = {
+    Name = "${var.project_name}-vpc"
+  }
+}
+
+{% set ns = namespace(has_subnets=false) %}
+{% for node in nodes %}
+  {% if node.type == 'SubnetGroupNode' %}
+    {% set ns.has_subnets = true %}
+  {% endif %}
+{% endfor %}
+
+{% macro get_subnet_id(node) -%}
+  {%- if node.parentNode -%}
+    {{- node.parentNode | sanitize_id -}}
+  {%- else -%}
+    {%- if node.type == 'GatewayNode' or node.type == 'FrontendNode' -%}
+      {%- if ns.has_subnets -%}subnetingr{%- else -%}subnetingress{%- endif -%}
+    {%- elif node.type == 'DatabaseNode' or node.type == 'CacheNode' -%}
+      subnetdata
+    {%- elif node.type == 'SecurityNode' or node.type == 'MonitoringNode' -%}
+      subnetpe
+    {%- else -%}
+      subnetapp
+    {%- endif -%}
+  {%- endif -%}
+{%- endmacro %}
+
+# Subnets mapped from the visual architecture canvas
+{% if ns.has_subnets %}
+{% for node in nodes %}
+{% if node.type == 'SubnetGroupNode' %}
+{% set safe_id = node.id | sanitize_id %}
+resource "aws_subnet" "{{ safe_id }}" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = {% if node.id in subnet_cidrs %}"{{ subnet_cidrs[node.id] }}"
+                      {% elif (node.id | lower) in subnet_cidrs %}"{{ subnet_cidrs[node.id | lower] }}"
+                      {% elif 'ingress' in node.id %}"{{ subnet_cidrs['subnet-ingress'] }}"
+                      {% elif 'app' in node.id %}"{{ subnet_cidrs['subnet-app'] }}"
+                      {% elif 'data' in node.id %}"{{ subnet_cidrs['subnet-data'] }}"
+                      {% elif 'mgmt' in node.id %}"{{ subnet_cidrs['subnet-mgmt'] }}"
+                      {% elif 'pe' in node.id %}"{{ subnet_cidrs['subnet-pe'] }}"
+                      {% else %}"10.0.10.0/24"
+                      {% endif %}
+  map_public_ip_on_launch = {% if 'ingress' in node.id %} true {% else %} false {% endif %}
+
+  tags = {
+    Name = "snet-{{ safe_id }}"
+  }
+}
+{% endif %}
+{% endfor %}
+{% else %}
+resource "aws_subnet" "subnetingress" {
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = "{{ subnet_cidrs['subnet-ingress'] }}"
+  map_public_ip_on_launch = true
+  tags = {
+    Name = "snet-ingress"
+  }
+}
+
+resource "aws_subnet" "subnetapp" {
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = "{{ subnet_cidrs['subnet-app'] }}"
+  map_public_ip_on_launch = false
+  tags = {
+    Name = "snet-app"
+  }
+}
+
+resource "aws_subnet" "subnetdata" {
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = "{{ subnet_cidrs['subnet-data'] }}"
+  map_public_ip_on_launch = false
+  tags = {
+    Name = "snet-data"
+  }
+}
+
+resource "aws_subnet" "subnetpe" {
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = "{{ subnet_cidrs['subnet-pe'] }}"
+  map_public_ip_on_launch = false
+  tags = {
+    Name = "snet-pe"
+  }
+}
+{% endif %}
+
+# Security Group for Ingress
+resource "aws_security_group" "ingress_sg" {
+  name        = "ingress-sg"
+  description = "Allow HTTP/HTTPS inbound traffic"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# Security Group for App Workloads
+resource "aws_security_group" "app_sg" {
+  name        = "app-sg"
+  description = "Allow traffic from ingress"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port       = 80
+    to_port         = 80
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ingress_sg.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+{% if has_backend %}
+# Shared ECS Cluster for all backend services
+resource "aws_ecs_cluster" "cluster_main" {
+  name = "${var.project_name}-cluster"
+}
+{% endif %}
+
+{% for node in nodes %}
+{% set safe_id = node.id | sanitize_id %}
+
+{% if node.type == 'GatewayNode' %}
+# Gateway & Load Balancer
+resource "aws_lb" "alb_{{ safe_id }}" {
+  name               = "alb-{{ safe_id }}"
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.ingress_sg.id]
+  subnets            = [aws_subnet.{{ get_subnet_id(node) }}.id]
+}
+
+resource "aws_wafv2_web_acl" "waf_{{ safe_id }}" {
+  name        = "waf-{{ safe_id }}"
+  scope       = "REGIONAL"
+  default_action {
+    allow {}
+  }
+  visibility_config {
+    cloudwatch_metrics_enabled = false
+    metric_name                = "waf-{{ safe_id }}"
+    sampled_requests_enabled   = false
+  }
+}
+
+{% elif node.type == 'FrontendNode' %}
+# S3 Static Hosting / CloudFront
+resource "aws_s3_bucket" "frontend_{{ safe_id }}" {
+  bucket = "${var.project_name}-frontend-{{ safe_id }}"
+}
+
+resource "aws_s3_bucket_public_access_block" "frontend_{{ safe_id }}_access" {
+  bucket = aws_s3_bucket.frontend_{{ safe_id }}.id
+  block_public_acls       = false
+  block_public_policy     = false
+  ignore_public_acls      = false
+  restrict_public_buckets = false
+}
+
+{% elif node.type == 'BackendNode' %}
+{% if node.id == 'aks-cluster' or 'eks' in node.id or 'k8s' in node.id %}
+# EKS Managed Kubernetes Cluster
+resource "aws_eks_cluster" "eks_{{ safe_id }}" {
+  name     = "eks-{{ safe_id }}"
+  role_arn = aws_iam_role.eks_role.arn
+
+  vpc_config {
+    subnet_ids = [aws_subnet.{{ get_subnet_id(node) }}.id]
+  }
+
+  depends_on = [
+    aws_iam_role_policy_attachment.eks_cluster_policy,
+  ]
+}
+
+resource "aws_iam_role" "eks_role" {
+  name = "eks-cluster-role-{{ safe_id }}"
+
+  assume_role_policy = jsonencode({
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "eks.amazonaws.com"
+      }
+    }]
+    Version = "2012-10-17"
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "eks_cluster_policy" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
+  role       = aws_iam_role.eks_role.name
+}
+{% elif node.id == 'aks-system' or node.id == 'aks-user' %}
+# Node Groups are defined as EKS Managed Node Groups
+resource "aws_eks_node_group" "nodes_{{ safe_id }}" {
+  cluster_name    = aws_eks_cluster.eks_akscluster.name
+  node_group_name = "ng-{{ safe_id }}"
+  node_role_arn   = aws_iam_role.node_role.arn
+  subnet_ids      = [aws_subnet.{{ get_subnet_id(node) }}.id]
+
+  scaling_config {
+    desired_size = 2
+    max_size     = 4
+    min_size     = 1
+  }
+}
+
+resource "aws_iam_role" "node_role" {
+  name = "eks-node-role-{{ safe_id }}"
+
+  assume_role_policy = jsonencode({
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "ec2.amazonaws.com"
+      }
+    }]
+    Version = "2012-10-17"
+  })
+}
+{% else %}
+# ECS Fargate Compute
+resource "aws_ecs_task_definition" "task_{{ safe_id }}" {
+  family                   = "task-{{ safe_id }}"
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = 256
+  memory                   = 512
+  container_definitions    = jsonencode([
+    {
+      name      = "api-container"
+      image     = "nginx:latest"
+      essential = true
+      portMappings = [
+        {
+          containerPort = 80
+          hostPort      = 80
+        }
+      ]
+    }
+  ])
+}
+
+resource "aws_ecs_service" "service_{{ safe_id }}" {
+  name            = "service-{{ safe_id }}"
+  cluster         = aws_ecs_cluster.cluster_main.id
+  task_definition = aws_ecs_task_definition.task_{{ safe_id }}.arn
+  desired_count   = 1
+  launch_type     = "FARGATE"
+  network_configuration {
+    subnets          = [aws_subnet.{{ get_subnet_id(node) }}.id]
+    security_groups  = [aws_security_group.app_sg.id]
+    assign_public_ip = false
+  }
+}
+{% endif %}
+
+{% elif node.type == 'DatabaseNode' %}
+# RDS DB Subnet Group
+resource "aws_db_subnet_group" "db_subnet_group" {
+  name       = "db-subnet-group"
+  subnet_ids = [aws_subnet.{{ get_subnet_id(node) }}.id]
+}
+
+# RDS PostgreSQL
+resource "aws_db_instance" "db_{{ safe_id }}" {
+  allocated_storage    = 20
+  engine               = "postgres"
+  engine_version       = "15.4"
+  instance_class       = "db.t3.micro"
+  username             = "adminuser"
+  password             = var.db_password
+  db_subnet_group_name = aws_db_subnet_group.db_subnet_group.name
+  skip_final_snapshot  = true
+  identifier           = "db-{{ safe_id }}"
+}
+
+{% elif node.type == 'CacheNode' %}
+# ElastiCache DB Subnet Group
+resource "aws_elasticache_subnet_group" "cache_subnets" {
+  name       = "cache-subnet-group"
+  subnet_ids = [aws_subnet.{{ get_subnet_id(node) }}.id]
+}
+
+# ElastiCache Redis
+resource "aws_elasticache_cluster" "redis_{{ safe_id }}" {
+  cluster_id           = "redis-{{ safe_id }}"
+  engine               = "redis"
+  node_type            = "cache.t3.micro"
+  num_cache_nodes      = 1
+  parameter_group_name = "default.redis7"
+  engine_version       = "7.0"
+  port                 = 6379
+  subnet_group_name    = aws_elasticache_subnet_group.cache_subnets.name
+}
+
+{% elif node.type == 'StorageNode' %}
+# S3 Storage
+resource "aws_s3_bucket" "storage_{{ safe_id }}" {
+  bucket = "${var.project_name}-storage-{{ safe_id }}"
+}
+
+{% elif node.type == 'SecurityNode' %}
+{% if node.id.startswith('pe-') %}
+# VPC Endpoint (Private Link) for AWS services
+resource "aws_vpc_endpoint" "pe_{{ safe_id }}" {
+  vpc_id            = aws_vpc.main.id
+  service_name      = {% if 'db' in node.id %}"com.amazonaws.${var.aws_region}.rds"{% elif 'kv' in node.id %}"com.amazonaws.${var.aws_region}.secretsmanager"{% elif 'storage' in node.id %}"com.amazonaws.${var.aws_region}.s3"{% else %}"com.amazonaws.${var.aws_region}.secretsmanager"{% endif %}
+  vpc_endpoint_type = "Interface"
+  subnet_ids        = [aws_subnet.{{ get_subnet_id(node) }}.id]
+}
+{% else %}
+# Secrets Manager
+resource "aws_secretsmanager_secret" "vault_{{ safe_id }}" {
+  name = "vault-{{ safe_id }}"
+}
+{% endif %}
+
+{% endif %}
+{% endfor %}

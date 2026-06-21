@@ -1,0 +1,13 @@
+output "aws_vpc_id" {
+  value = aws_vpc.main.id
+}
+
+{% for node in nodes %}
+{% set safe_id = node.id | sanitize_id %}
+
+{% if node.type == 'GatewayNode' %}
+output "gateway_endpoint_{{ safe_id }}" {
+  value = aws_lb.alb_{{ safe_id }}.dns_name
+}
+{% endif %}
+{% endfor %}

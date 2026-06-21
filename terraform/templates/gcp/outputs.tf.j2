@@ -1,0 +1,13 @@
+output "gcp_vpc_network" {
+  value = google_compute_network.vpc_network.id
+}
+
+{% for node in nodes %}
+{% set safe_id = node.id | sanitize_id %}
+
+{% if node.type == 'GatewayNode' %}
+output "gateway_endpoint_{{ safe_id }}" {
+  value = google_compute_global_forwarding_rule.default_{{ safe_id }}.ip_address
+}
+{% endif %}
+{% endfor %}

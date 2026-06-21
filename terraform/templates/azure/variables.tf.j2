@@ -1,0 +1,23 @@
+variable "project_name" {
+  type        = string
+  description = "Unique alphanumeric string identifying this project stack"
+  default     = "archgen"
+}
+
+variable "environment" {
+  type        = string
+  description = "Deployment space (dev, staging, prod)"
+  default     = "prod"
+}
+
+variable "location" {
+  type        = string
+  description = "Target Azure datacenter region"
+  default     = "eastus"
+}
+
+variable "db_password" {
+  type        = string
+  description = "Administrator login password for flexible databases"
+  sensitive   = true
+}
