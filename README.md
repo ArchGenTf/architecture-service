@@ -24,7 +24,7 @@ The workflow defined in [.github/workflows/ci-cd.yml](.github/workflows/ci-cd.ym
 6. **Trivy Scan**: Checks image CVE vulnerabilities.
 7. **Deploy to Dev**: Pushes image to the ACR and updates `values-dev.yaml` on the `dev` branch of the `Main` repo.
 8. **Slack Alerts**: Notifies your Slack channel of dev build success or failure.
-9. **Production Promotion (Approval-Gated)**: Pauses for manual approval under the `production` environment. Upon approval, pushes image to the ACR and updates `values-prod.yaml` on the `master` branch.
+9. **Production Promotion**: Automatically triggered by creating a GitHub Release / Tag (`v*`). Finds the pre-built image, tags it with the release tag, pushes it to ACR, and updates `values-prod.yaml` on the `master` branch.
 
 ---
 
@@ -43,8 +43,9 @@ Add these secrets to your GitHub repository under `Settings` -> `Secrets and var
 
 ---
 
-## Setup Manual Approval Environment
+## Production Promotion & GitOps Release Flow
 
-1. Navigate to your GitHub repository: `Settings` -> `Environments`.
-2. Click **New environment** and name it exactly: `production`.
-3. Check **Required reviewers** and assign authorized reviewers.
+This pipeline uses an automated, Git-driven release flow rather than manual environments:
+1. **Develop Deployment**: Merges to the `master` branch automatically deploy code changes to the Dev cluster (updating `values-dev.yaml` on the `dev` branch of the `Main` repo with the commit SHA tag).
+2. **Production Release**: When ready for a production release, create and publish a GitHub Release with a tag matching `v*` (e.g. `v1.0.0`) in this repository.
+3. The promotion pipeline will automatically find the pre-built image corresponding to that commit SHA, tag it with the release tag (e.g., `v1.0.0`), and push the new tag. It will then update `values-prod.yaml` on the `master` branch of the `Main` repository with the release tag.

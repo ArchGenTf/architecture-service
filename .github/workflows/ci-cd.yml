@@ -4,11 +4,10 @@ on:
   push:
     branches:
       - master
-      - main
-  pull_request:
-    branches:
-      - master
-      - main
+    tags:
+      - 'v*'
+  release:
+    types: [published]
 
 jobs:
   run-pipeline:
