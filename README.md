@@ -28,23 +28,50 @@ The calling workflow [.github/workflows/ci-cd.yml](.github/workflows/ci-cd.yml) 
 
 ---
 
-## Required Secrets Setup
+## Required Secrets Setup & Generation Guide
 
-Add these secrets to this GitHub repository under `Settings` -> `Secrets and variables` -> `Actions`:
+Add these secrets to your GitHub repository under `Settings` -> `Secrets and variables` -> `Actions` to authorize and run the pipeline:
 
-1. **`GH_PAT`**: Personal Access Token (classic) with `repo` scope to modify the `Main` repo and trigger repository dispatch.
-2. **`AZURE_CREDENTIALS`**: Service Principal JSON generated via:
+### 1. `GH_PAT` (GitHub Personal Access Token)
+*Required. Needed to check out and push tag updates to the Main repository and trigger dispatches.*
+1. Go to your GitHub profile settings: `Settings` -> `Developer settings` -> `Personal access tokens` -> `Tokens (classic)`.
+2. Click **Generate new token** -> **Generate new token (classic)**.
+3. Set the note (e.g., `gitops-infra-token`) and check the `repo` scope checkbox.
+4. Click **Generate token** and copy it immediately.
+5. Save this as `GH_PAT` in your service repository secrets.
+
+### 2. `AZURE_CREDENTIALS` (Azure Service Principal)
+*Required. Needed to authenticate and push container images to Azure Container Registry (`acrarchgen.azurecr.io`).*
+1. Open the Azure CLI or Cloud Shell.
+2. Generate a Service Principal JSON payload by running:
    ```bash
    az ad sp create-for-rbac --name "github-actions-sp" --role contributor --scopes /subscriptions/<SUBSCRIPTION_ID>/resourceGroups/<RESOURCE_GROUP_NAME> --sdk-auth
    ```
-3. **SMTP Email Secrets** (Optional):
-   - `SMTP_HOST`: The SMTP server host.
-   - `SMTP_PORT`: SMTP server port.
-   - `SMTP_USER`: SMTP username / sender email.
-   - `SMTP_PASS`: SMTP App Password.
-   - `NOTIFY_EMAIL`: Destination email address.
-4. **`SLACK_WEBHOOK`** (Optional): Slack Webhook URL for build notifications.
-5. **`SONAR_TOKEN`** & **`SNYK_TOKEN`** (Optional): SonarCloud and Snyk API tokens.
+   *(Replace `<SUBSCRIPTION_ID>` and `<RESOURCE_GROUP_NAME>` with your Azure subscription ID and resource group where your ACR resides)*
+3. Copy the output JSON block and save it as `AZURE_CREDENTIALS` in your repository secrets.
+
+### 3. SMTP Email Secrets (SMTP Notification)
+*Optional. Set up these secrets to receive automated email reports on build/check outcomes.*
+- `SMTP_HOST`: The SMTP server host (e.g., `smtp.gmail.com`).
+- `SMTP_PORT`: SMTP server port (e.g. `465` or `587`).
+- `SMTP_USER`: SMTP username / sender account.
+- `SMTP_PASS`: SMTP password / App Password.
+- `NOTIFY_EMAIL`: Destination email address to receive build logs.
+
+### 4. `SLACK_WEBHOOK` (Slack Incoming Webhook URL)
+*Optional. Needed to send pipeline success/failure alerts to Slack.*
+1. Create a Slack App in your workspace via the [Slack API console](https://api.slack.com/apps).
+2. Go to **Incoming Webhooks** and toggle it **On**.
+3. Click **Add New Webhook to Workspace**, select the target channel, and click **Allow**.
+4. Copy the generated Webhook URL (starts with `https://hooks.slack.com/services/`).
+5. Save this as `SLACK_WEBHOOK` in your repository secrets.
+
+### 5. SonarQube & Snyk Secrets
+*Optional. Configure these to enable static code security analysis and library scanning.*
+- `SONAR_TOKEN`: API token generated from SonarCloud (`My Account` -> `Security`).
+- `SONAR_URL`: SonarQube host URL (defaults to `https://sonarcloud.io`).
+- `SONAR_KEY`: (Optional) Custom Sonar project key (defaults to `ArchGenTf_architecture-service`).
+- `SNYK_TOKEN`: Snyk API token generated from Snyk account settings.
 
 ---
 
