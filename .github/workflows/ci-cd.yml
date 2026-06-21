@@ -1,29 +1,20 @@
-name: CI/CD Pipeline
+name: CI/CD
 
 on:
+  pull_request:
+    branches: [master]
   push:
-    branches:
-      - master
-    tags:
-      - 'v*'
-  release:
-    types: [published]
+    branches: [master]
+
+permissions:
+  contents: read
+  packages: write
 
 jobs:
-  run-pipeline:
-    uses: ArchGenTf/Main/.github/workflows/reusable-pipeline.yml@master
+  pipeline:
+    uses: ArchGenTf/Main/.github/workflows/backend.yml@master
     with:
-      service_name: "architecture-service"
-      helm_dir: "architecture-service"
-      image_repository_dev: "acrarchgen.azurecr.io/architecture-service"
-      image_repository_prod: "acrarchgen.azurecr.io/architecture-service"
-      dockerfile_path: "./Dockerfile"
-      smoke_test_port: "8003"
-      smoke_test_endpoint: "/healthz"
-      lint_command: "pip install flake8 && flake8 . --exclude=venv,env,.dist,__pycache__ --ignore=E501"
-    secrets:
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-      AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
-      PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
-      SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+      service: "architecture-service"
+      image: "acrarchgen.azurecr.io/architecture-service"
+      trigger: ${{ github.event_name }}
+    secrets: inherit
