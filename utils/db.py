@@ -7,6 +7,7 @@ logger = logging.getLogger("database_manager")
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 DATABASE_NAME = os.getenv("DATABASE_NAME", "archgen_db")
 
+
 class DatabaseManager:
     client: AsyncIOMotorClient = None
     db = None
@@ -29,7 +30,8 @@ class DatabaseManager:
             await self.client.admin.command('ping')
             logger.info("Successfully established connection with MongoDB.")
         except Exception as e:
-            logger.error(f"Failed to connect to MongoDB: {e}. Project persistence disabled.")
+            logger.error(
+                f"Failed to connect to MongoDB: {e}. Project persistence disabled.")
             self.client = None
             self.db = None
 
@@ -41,7 +43,9 @@ class DatabaseManager:
             self.client.close()
             logger.info("MongoDB client connection closed.")
 
+
 db_manager = DatabaseManager()
+
 
 def get_database():
     """

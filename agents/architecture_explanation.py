@@ -4,6 +4,7 @@ from prompts.templates import ARCHITECTURE_EXPLANATION_PROMPT
 from typing import Dict, Any, Optional
 from utils.llm_provider import AIProvider
 
+
 class ArchitectureExplanationAgent(BaseAgent):
     def __init__(self, client: Optional[AIProvider] = None):
         super().__init__(
@@ -25,9 +26,12 @@ class ArchitectureExplanationAgent(BaseAgent):
 
         if isinstance(raw_requirements, dict):
             app_desc = raw_requirements.get("app_description", "")
-            sec_reqs = raw_requirements.get("security_requirements", "") or raw_requirements.get("security_level", "")
-            perf_reqs = raw_requirements.get("performance_requirements", "") or f"Scalability: {raw_requirements.get('scalability_preference', '')}, Availability Target: {raw_requirements.get('availability_target', '')}, RTO: {raw_requirements.get('rto', '')}, RPO: {raw_requirements.get('rpo', '')}"
-            tech_cons = raw_requirements.get("technical_constraints", "") or f"Budget: {raw_requirements.get('monthly_budget', '')}, Region: {raw_requirements.get('region', '')}"
+            sec_reqs = raw_requirements.get(
+                "security_requirements", "") or raw_requirements.get("security_level", "")
+            perf_reqs = raw_requirements.get(
+                "performance_requirements", "") or f"Scalability: {raw_requirements.get('scalability_preference', '')}, Availability Target: {raw_requirements.get('availability_target', '')}, RTO: {raw_requirements.get('rto', '')}, RPO: {raw_requirements.get('rpo', '')}"
+            tech_cons = raw_requirements.get(
+                "technical_constraints", "") or f"Budget: {raw_requirements.get('monthly_budget', '')}, Region: {raw_requirements.get('region', '')}"
             cloud_prov = raw_requirements.get("cloud_provider", cloud_prov)
         else:
             app_desc = str(raw_requirements)
@@ -41,8 +45,8 @@ class ArchitectureExplanationAgent(BaseAgent):
                 technical_constraints=tech_cons,
                 cloud_provider=cloud_prov
             )
-        except Exception as e:
-            pass # Fallback to unformatted if keys mismatch
+        except Exception:
+            pass  # Fallback to unformatted if keys mismatch
 
         user_prompt = (
             f"Planned Architecture:\n{json.dumps(plan, indent=2)}\n\n"

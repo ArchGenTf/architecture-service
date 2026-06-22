@@ -4,6 +4,7 @@ from prompts.templates import TOPOLOGY_GENERATION_PROMPT
 from typing import Dict, Any, Optional, List
 from utils.llm_provider import AIProvider
 
+
 class TopologyGenerationAgent(BaseAgent):
     def __init__(self, client: Optional[AIProvider] = None):
         super().__init__(
@@ -28,10 +29,11 @@ class TopologyGenerationAgent(BaseAgent):
         )
 
         if validation_findings:
+            findings_str = "\n".join(f"- {finding}" for finding in validation_findings)
             user_prompt += (
-                f"\n\nCRITICAL: The previous topology failed validation. "
+                f"\n\nCRITICAL: The previous topology failed validation. \n"
                 f"You MUST correct all of the following validation findings in the new topology:\n"
-                + "\n".join(f"- {finding}" for finding in validation_findings)
+                f"{findings_str}"
             )
 
         return await self.execute(user_prompt)

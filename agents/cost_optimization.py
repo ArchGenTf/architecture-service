@@ -4,6 +4,7 @@ from prompts.templates import COST_OPTIMIZATION_PROMPT
 from typing import Dict, Any, Optional
 from utils.llm_provider import AIProvider
 
+
 class CostOptimizationAgent(BaseAgent):
     def __init__(self, client: Optional[AIProvider] = None):
         super().__init__(
