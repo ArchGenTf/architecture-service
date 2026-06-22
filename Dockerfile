@@ -6,6 +6,7 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 FROM python:3.12-slim
 WORKDIR /app
 RUN groupadd -r appgroup && useradd -m -r -g appgroup appuser
+RUN pip install --no-cache-dir --upgrade wheel jaraco.context
 COPY --chown=appuser:appgroup --from=builder /root/.local /home/appuser/.local
 COPY . .
 RUN chown -R appuser:appgroup /app
