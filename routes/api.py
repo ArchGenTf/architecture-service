@@ -1,9 +1,10 @@
+from typing import List, Dict, Any
+from utils.provider_manager import ProviderManager
 import asyncio
 import json
 import logging
 import re
 import uuid
-from typing import Dict, Any, List
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -16,7 +17,6 @@ from models.schemas import (
     ArchitectureResponse,
     TerraformRequest,
     TerraformResponse,
-    AiAssistRequest,
 )
 
 # Core engines
@@ -37,8 +37,6 @@ tf_engine = TerraformEngine()
 cache_manager = CacheManager()
 perf_logger = PerformanceLogger()
 
-from utils.provider_manager import ProviderManager
-from typing import List, Dict, Any
 
 def flatten_nested_nodes(nodes: List[Dict[str, Any]], parent_id: str = None) -> List[Dict[str, Any]]:
     """
@@ -52,7 +50,8 @@ def flatten_nested_nodes(nodes: List[Dict[str, Any]], parent_id: str = None) -> 
     for node in nodes:
         if not isinstance(node, dict):
             continue
-        children = node.pop("children", None)  # Remove children key before adding to flat list
+        # Remove children key before adding to flat list
+        children = node.pop("children", None)
 
         # Lift resource_id from data{} to top-level id if missing
         node_id = node.get("id")
@@ -68,22 +67,25 @@ def flatten_nested_nodes(nodes: List[Dict[str, Any]], parent_id: str = None) -> 
             flat.append(node)
             # Recurse into children using this node's ID as parent
             if children and isinstance(children, list):
-                flat.extend(flatten_nested_nodes(children, parent_id=str(node_id)))
+                flat.extend(flatten_nested_nodes(
+                    children, parent_id=str(node_id)))
         else:
             # No ID — this is an anonymous wrapper (e.g. the topology root).
             # Don't add it to flat list, but DO recurse into its children.
             if children and isinstance(children, list):
-                flat.extend(flatten_nested_nodes(children, parent_id=parent_id))
+                flat.extend(flatten_nested_nodes(
+                    children, parent_id=parent_id))
     return flat
 
 
 def ensure_container_nodes(nodes: List[Dict[str, Any]], provider: str, requirements: Any) -> List[Dict[str, Any]]:
     node_ids = {str(n.get("id")).lower() for n in nodes if n.get("id")}
-    
+
     compute_type = "AKS"
     if requirements:
-        compute_type = getattr(requirements, "computeType", None) or getattr(requirements, "application_type", None) or "AKS"
-    
+        compute_type = getattr(requirements, "computeType", None) or getattr(
+            requirements, "application_type", None) or "AKS"
+
     containers = [
         {
             "id": "region-group",
@@ -268,7 +270,7 @@ def ensure_container_nodes(nodes: List[Dict[str, Any]], provider: str, requireme
 
     if target_compute_id.lower() not in {str(n.get("id")).lower() for n in injected if n.get("id")}:
         injected.append(target_node)
-        
+
     return injected
 
 
@@ -278,7 +280,7 @@ def post_process_nodes(nodes: List[Dict[str, Any]], provider: str, requirements:
         # Align microservice node IDs to start with 'svc-'
         if edges is not None:
             PROTECTED_COMPUTE_IDS = {
-                "aks-cluster", "aks-cluster-group", "aks-system-node-pool", "aks-user-node-pool", "aks-ingress-controller", "aks-hpa", 
+                "aks-cluster", "aks-cluster-group", "aks-system-node-pool", "aks-user-node-pool", "aks-ingress-controller", "aks-hpa",
                 "app-service-plan", "container-app-env", "container-app-env-group"
             }
             id_mapping = {}
@@ -297,7 +299,8 @@ def post_process_nodes(nodes: List[Dict[str, Any]], provider: str, requirements:
                     if "data" in n and isinstance(n["data"], dict):
                         n["data"]["resource_id"] = new_id
             if id_mapping:
-                id_mapping_lower = {k.lower(): v for k, v in id_mapping.items()}
+                id_mapping_lower = {
+                    k.lower(): v for k, v in id_mapping.items()}
                 for e in edges:
                     src = e.get("source")
                     tgt = e.get("target")
@@ -313,13 +316,18 @@ def post_process_nodes(nodes: List[Dict[str, Any]], provider: str, requirements:
 
         compute_type = "AKS"
         if requirements:
-            compute_type = getattr(requirements, "computeType", None) or getattr(requirements, "application_type", None) or "AKS"
-        compute_upper = str(compute_type).upper().replace("_", " ").replace("-", " ")
+            compute_type = getattr(requirements, "computeType", None) or getattr(
+                requirements, "application_type", None) or "AKS"
+        compute_upper = str(compute_type).upper().replace(
+            "_", " ").replace("-", " ")
 
         # Filter out forbidden nodes based on locked compute platform
-        AKS_FORBIDDEN = {"app-service-plan", "web-app", "container-app-env", "container-app-env-group"}
-        APPSERVICE_FORBIDDEN = {"aks-cluster", "aks-cluster-group", "aks-system-node-pool", "aks-user-node-pool", "aks-ingress-controller", "aks-hpa", "container-app-env"}
-        CONTAINERAPPS_FORBIDDEN = {"aks-cluster", "aks-cluster-group", "aks-system-node-pool", "aks-user-node-pool", "aks-ingress-controller", "aks-hpa", "app-service-plan", "web-app"}
+        AKS_FORBIDDEN = {"app-service-plan", "web-app",
+                         "container-app-env", "container-app-env-group"}
+        APPSERVICE_FORBIDDEN = {"aks-cluster", "aks-cluster-group", "aks-system-node-pool",
+                                "aks-user-node-pool", "aks-ingress-controller", "aks-hpa", "container-app-env"}
+        CONTAINERAPPS_FORBIDDEN = {"aks-cluster", "aks-cluster-group", "aks-system-node-pool",
+                                   "aks-user-node-pool", "aks-ingress-controller", "aks-hpa", "app-service-plan", "web-app"}
 
         forbidden_nodes = set()
         if "AKS" in compute_upper or "KUBERNETES" in compute_upper:
@@ -329,7 +337,8 @@ def post_process_nodes(nodes: List[Dict[str, Any]], provider: str, requirements:
         else:
             forbidden_nodes = CONTAINERAPPS_FORBIDDEN
 
-        nodes = [n for n in nodes if str(n.get("id", "")).lower() not in forbidden_nodes]
+        nodes = [n for n in nodes if str(
+            n.get("id", "")).lower() not in forbidden_nodes]
 
         # -----------------------------------------------------------------------
         # Canonical Subnet Enforcement
@@ -350,17 +359,17 @@ def post_process_nodes(nodes: List[Dict[str, Any]], provider: str, requirements:
             lbl_l = str(node.get("data", {}).get("label", "")).lower()
             ntype = str(node.get("type", ""))
             if any(x in nid_l or x in lbl_l for x in ["keyvault", "vault", "log-analytics", "log analytics",
-                                                        "app-insights", "app insights", "azure-monitor", "monitor",
-                                                        "backup-vault", "recovery-vault", "acr", "cost-management"]):
+                                                      "app-insights", "app insights", "azure-monitor", "monitor",
+                                                      "backup-vault", "recovery-vault", "acr", "cost-management"]):
                 return "shared-services-group"
             if any(x in nid_l or x in lbl_l for x in ["pe-", "private endpoint", "private-endpoint"]):
                 return "subnet-pe"
             if ntype in ["DatabaseNode", "CacheNode", "StorageNode"] or \
                any(x in nid_l or x in lbl_l for x in ["db-", "database", "postgresql", "postgres", "mysql",
-                                                        "cosmos", "redis", "cache", "storage", "blob", "bucket"]):
+                                                      "cosmos", "redis", "cache", "storage", "blob", "bucket"]):
                 return "subnet-data"
             if any(x in nid_l or x in lbl_l for x in ["gateway", "app-gateway", "appgw", "waf", "firewall",
-                                                        "front-door", "frontdoor", "loadbalancer", "load-balancer"]):
+                                                      "front-door", "frontdoor", "loadbalancer", "load-balancer"]):
                 return "subnet-ingress"
             if any(x in nid_l or x in lbl_l for x in ["bastion", "jumpbox", "managed-identity", "role-assignment"]):
                 return "subnet-mgmt"
@@ -376,7 +385,8 @@ def post_process_nodes(nodes: List[Dict[str, Any]], provider: str, requirements:
                     custom_subnet_ids.add(nid_l)
 
         if custom_subnet_ids:
-            logger.info(f"Stripping non-canonical subnet nodes: {custom_subnet_ids}")
+            logger.info(
+                f"Stripping non-canonical subnet nodes: {custom_subnet_ids}")
             # Remap children of custom subnets to their canonical equivalent
             for n in nodes:
                 parent_l = str(n.get("parentNode", "")).lower()
@@ -386,7 +396,8 @@ def post_process_nodes(nodes: List[Dict[str, Any]], provider: str, requirements:
                     if "data" in n and isinstance(n["data"], dict):
                         n["data"]["subnet"] = canonical
             # Remove the custom subnet nodes entirely (ensure_container_nodes injects canonical ones)
-            nodes = [n for n in nodes if str(n.get("id", "")).lower() not in custom_subnet_ids]
+            nodes = [n for n in nodes if str(
+                n.get("id", "")).lower() not in custom_subnet_ids]
 
         # Also fix any resource node that still points to a non-canonical parentNode
         for n in nodes:
@@ -405,9 +416,12 @@ def post_process_nodes(nodes: List[Dict[str, Any]], provider: str, requirements:
         if match_cidr:
             ip_prefix = match_cidr.group(1)
 
-        reasoning_engine = InfrastructureReasoningEngine(cloud_provider=provider, requirements=requirements)
-        compute_name = reasoning_engine.get_cloud_resource_name(requirements.computeType or "AKS")
-        db_name = reasoning_engine.get_cloud_resource_name(requirements.database_type or "PostgreSQL")
+        reasoning_engine = InfrastructureReasoningEngine(
+            cloud_provider=provider, requirements=requirements)
+        compute_name = reasoning_engine.get_cloud_resource_name(
+            requirements.computeType or "AKS")
+        db_name = reasoning_engine.get_cloud_resource_name(
+            requirements.database_type or "PostgreSQL")
 
         # Determine specific terraform resource names based on selected database and compute
         prov_lower = provider.lower()
@@ -424,7 +438,7 @@ def post_process_nodes(nodes: List[Dict[str, Any]], provider: str, requirements:
             db_tf_resource = "aws_db_instance"
             if "cosmos" in db_type_lower:
                 db_tf_resource = "aws_dynamodb_table"
-        else: # GCP
+        else:  # GCP
             db_tf_resource = "google_sql_database_instance"
             if "cosmos" in db_type_lower:
                 db_tf_resource = "google_firestore_db"
@@ -442,7 +456,7 @@ def post_process_nodes(nodes: List[Dict[str, Any]], provider: str, requirements:
                 compute_tf_resource = "aws_elastic_beanstalk_environment"
             elif "container app" in compute_type_lower:
                 compute_tf_resource = "aws_ecs_service"
-        else: # GCP
+        else:  # GCP
             compute_tf_resource = "google_container_cluster"
             if "app service" in compute_type_lower or "web app" in compute_type_lower:
                 compute_tf_resource = "google_app_engine_standard_app_version"
@@ -452,11 +466,11 @@ def post_process_nodes(nodes: List[Dict[str, Any]], provider: str, requirements:
         for node in nodes:
             n_id = str(node.get("id", "")).lower()
             n_type = str(node.get("type", ""))
-            
+
             # Fallback type mapping for unregistered node types (blank rectangles fix)
             ALLOWED_TYPES = {
-                "GatewayNode", "FrontendNode", "BackendNode", "DatabaseNode", "CacheNode", 
-                "StorageNode", "SecurityNode", "MonitoringNode", "RegionGroupNode", 
+                "GatewayNode", "FrontendNode", "BackendNode", "DatabaseNode", "CacheNode",
+                "StorageNode", "SecurityNode", "MonitoringNode", "RegionGroupNode",
                 "ResourceGroupNode", "VNetGroupNode", "SubnetGroupNode"
             }
             if n_type not in ALLOWED_TYPES:
@@ -482,7 +496,7 @@ def post_process_nodes(nodes: List[Dict[str, Any]], provider: str, requirements:
                     mapped_type = "GatewayNode"
                 elif any(x in n_id or x in lbl_lower for x in ["frontend", "web", "spa"]):
                     mapped_type = "FrontendNode"
-                
+
                 node["type"] = mapped_type
                 n_type = mapped_type
 
@@ -545,17 +559,17 @@ def post_process_nodes(nodes: List[Dict[str, Any]], provider: str, requirements:
             if n_type == "RegionGroupNode" or "region" in n_id:
                 node["data"] = node.get("data") or {}
                 node["data"]["label"] = f"Cloud Region: {requirements.region.upper() if requirements.region else 'EAST US'}"
-                
+
             # B. Update Resource Group Node Label
             elif n_type == "ResourceGroupNode" or "rg-" in n_id or n_id == "rg-group":
                 node["data"] = node.get("data") or {}
                 node["data"]["label"] = f"Resource Scope: {requirements.resourceGroup or 'rg-production'}"
-                
+
             # C. Update Virtual Network Node Label
             elif n_type == "VNetGroupNode" or "vnet" in n_id or "vpc" in n_id:
                 node["data"] = node.get("data") or {}
                 node["data"]["label"] = f"Virtual Network (VPC): {vnet_cidr_val}"
-                
+
             # D. Update Subnet Node Labels
             elif n_type == "SubnetGroupNode" or "subnet" in n_id:
                 node["data"] = node.get("data") or {}
@@ -570,7 +584,7 @@ def post_process_nodes(nodes: List[Dict[str, Any]], provider: str, requirements:
                     node["data"]["label"] = f"Application Subnet ({ip_prefix}.2.0/24)"
                 elif "data" in n_id or "data" in lbl or "database" in lbl:
                     node["data"]["label"] = f"Data Subnet ({ip_prefix}.3.0/24)"
-                    
+
             # E. Update Compute engine Node Label
             elif n_id in ["aks-cluster", "container-app-env", "app-service-plan", "compute", "cluster"] or (n_type == "BackendNode" and ("cluster" in n_id or "container-app-env" in n_id or "app-service-plan" in n_id) and not any(x in n_id for x in ["pool", "ingress", "controller", "system", "user", "svc-"])):
                 node["data"] = node.get("data") or {}
@@ -578,7 +592,7 @@ def post_process_nodes(nodes: List[Dict[str, Any]], provider: str, requirements:
                 node["data"]["terraform_resource"] = compute_tf_resource
                 node["data"]["typeSubText"] = compute_tf_resource
                 node["data"]["resource_type"] = "compute"
-                
+
             # F. Update Primary/Replica DB Node Labels
             elif n_id == "db-primary" or n_id == "database" or (n_type == "DatabaseNode" and "replica" not in n_id):
                 node["data"] = node.get("data") or {}
@@ -586,7 +600,7 @@ def post_process_nodes(nodes: List[Dict[str, Any]], provider: str, requirements:
                 node["data"]["terraform_resource"] = db_tf_resource
                 node["data"]["typeSubText"] = db_tf_resource
                 node["data"]["resource_type"] = "database"
-                
+
             # G. Update DB Replica Node Label
             elif n_id == "db-replica" or (n_type == "DatabaseNode" and "replica" in n_id):
                 node["data"] = node.get("data") or {}
@@ -596,7 +610,7 @@ def post_process_nodes(nodes: List[Dict[str, Any]], provider: str, requirements:
                 node["data"]["resource_type"] = "database"
     except Exception as pe:
         logger.warning(f"Failed to post-process node labels: {pe}")
-        
+
     # Ensure position, style, and data dictionary structures exist to prevent frontend crash
     container_defaults = {
         "region-group": {"x": 0.0, "y": 0.0},
@@ -613,7 +627,8 @@ def post_process_nodes(nodes: List[Dict[str, Any]], provider: str, requirements:
 
     compute_type = "AKS"
     if requirements:
-        compute_type = getattr(requirements, "computeType", None) or getattr(requirements, "application_type", None) or "AKS"
+        compute_type = getattr(requirements, "computeType", None) or getattr(
+            requirements, "application_type", None) or "AKS"
 
     for idx, node in enumerate(nodes):
         node['data'] = node.get('data') or {}
@@ -623,48 +638,39 @@ def post_process_nodes(nodes: List[Dict[str, Any]], provider: str, requirements:
         n_type = str(node.get("type", ""))
 
         if 'position' not in node or not isinstance(node['position'], dict):
-            node['position'] = {'x': float((idx % 5) * 200), 'y': float((idx // 5) * 150)}
+            node['position'] = {'x': float(
+                (idx % 5) * 200), 'y': float((idx // 5) * 150)}
 
         # Coordinate healing for container groups themselves
         if n_id_lower in container_defaults:
             pos = node.get("position", {})
             try:
-                x_val = float(pos.get("x", 0) if pos.get("x") is not None else 0)
-                y_val = float(pos.get("y", 0) if pos.get("y") is not None else 0)
+                x_val = float(pos.get("x", 0) if pos.get("x")
+                              is not None else 0)
+                y_val = float(pos.get("y", 0) if pos.get("y")
+                              is not None else 0)
             except (ValueError, TypeError):
                 x_val, y_val = 0.0, 0.0
-            
+
             default_pos = container_defaults[n_id_lower]
             if abs(x_val - default_pos["x"]) > 500 or abs(y_val - default_pos["y"]) > 500:
                 node["position"] = dict(default_pos)
             continue
 
-        # Force snap parentNode based on resource type / category
-        is_shared = (
-            "keyvault" in n_id_lower or "vault" in n_id_lower or
-            "log-analytics" in n_id_lower or "log analytics" in lbl_lower or
-            "app-insights" in n_id_lower or "app insights" in lbl_lower or
-            "azure-monitor" in n_id_lower or "azure monitor" in lbl_lower or
-            "backup-vault" in n_id_lower or "backup vault" in lbl_lower or
-            "recovery-vault" in n_id_lower or "recovery services vault" in lbl_lower or
-            "alerts" in n_id_lower or "alert" in lbl_lower or
-            "diagnostic" in n_id_lower or "diagnostic" in lbl_lower or
-            "acr" in n_id_lower or "acr" in lbl_lower or
-            "cost-management" in n_id_lower or "cost management" in lbl_lower
-        ) and not any(x in n_id_lower or x in lbl_lower for x in ["pe-", "private endpoint", "private-endpoint", "backup-policy"])
+        is_shared = (any(x in n_id_lower for x in ["keyvault", "vault", "log-analytics", "app-insights", "azure-monitor", "backup-vault", "recovery-vault", "alerts", "diagnostic", "acr", "cost-management"]) or any(x in lbl_lower for x in ["log analytics", "app insights", "azure monitor", "backup vault", "recovery services vault", "alert", "diagnostic", "acr", "cost management"])) and not any(x in n_id_lower or x in lbl_lower for x in ["pe-", "private endpoint", "private-endpoint", "backup-policy"])
 
         is_pe = ("pe-" in n_id_lower or "private endpoint" in lbl_lower or "private-endpoint" in lbl_lower) and n_type != "SubnetGroupNode"
-        
-        is_storage_resource = (
-            n_type in ["DatabaseNode", "CacheNode", "StorageNode"] or
-            any(db_kw in n_id_lower or db_kw in lbl_lower for db_kw in ["db-", "database", "postgresql", "mysql", "redis", "storage-account", "blob", "replica"])
-        ) and not is_pe and n_id_lower not in ["backup-vault", "recovery-vault"]
 
-        is_ingress_resource = any(x in n_id_lower or x in lbl_lower for x in ["app-gateway", "appgw", "azure-firewall", "firewall", "front-door", "frontdoor", "waf-policy", "waf"]) and not is_pe and not is_shared
+        is_storage_resource = (n_type in ["DatabaseNode", "CacheNode", "StorageNode"] or any(db_kw in n_id_lower or db_kw in lbl_lower for db_kw in ["db-", "database", "postgresql", "mysql", "redis", "storage-account", "blob", "replica"])) and not is_pe and n_id_lower not in ["backup-vault", "recovery-vault"]
 
-        is_compute_resource = any(x in n_id_lower for x in ["svc-", "aks-", "cluster", "pool", "ingress-controller"])
+        is_ingress_resource = any(x in n_id_lower or x in lbl_lower for x in [
+                                  "app-gateway", "appgw", "azure-firewall", "firewall", "front-door", "frontdoor", "waf-policy", "waf"]) and not is_pe and not is_shared
 
-        is_mgmt_resource = any(x in n_id_lower or x in lbl_lower for x in ["bastion", "jumpbox", "managed-identity", "role-assignment", "firewall-policy"]) and not is_shared
+        is_compute_resource = any(x in n_id_lower for x in [
+                                  "svc-", "aks-", "cluster", "pool", "ingress-controller"])
+
+        is_mgmt_resource = any(x in n_id_lower or x in lbl_lower for x in [
+                               "bastion", "jumpbox", "managed-identity", "role-assignment", "firewall-policy"]) and not is_shared
 
         if is_shared:
             node["parentNode"] = "shared-services-group"
@@ -710,7 +716,8 @@ def post_process_nodes(nodes: List[Dict[str, Any]], provider: str, requirements:
                     pos_assigned = True
                     break
             if not pos_assigned:
-                node["position"] = {"x": 1460.0, "y": float(20 + (idx % 3) * 100)}
+                node["position"] = {"x": 1460.0,
+                                    "y": float(20 + (idx % 3) * 100)}
 
         elif parent == "shared-services-group":
             y_map = {
@@ -735,38 +742,32 @@ def post_process_nodes(nodes: List[Dict[str, Any]], provider: str, requirements:
         elif parent and parent.startswith("subnet-"):
             pos = node.get("position", {})
             try:
-                x_val = float(pos.get("x", 0) if pos.get("x") is not None else 0)
-                y_val = float(pos.get("y", 0) if pos.get("y") is not None else 0)
+                x_val = float(pos.get("x", 0) if pos.get("x")
+                              is not None else 0)
+                y_val = float(pos.get("y", 0) if pos.get("y")
+                              is not None else 0)
             except (ValueError, TypeError):
                 x_val, y_val = 0.0, 0.0
-            
-            if x_val < 0 or x_val > 1800 or y_val < 0 or y_val > 600:
-                node["position"] = {"x": float(30 + (idx % 4) * 250), "y": float(60 + (idx // 4) * 110)}
 
-        # Metadata Normalization: strip customMetadata from infrastructure nodes
-        is_infra = False
-        if (
-            "nsg" in n_id_lower or "nsg" in lbl_lower or 
-            "rt-" in n_id_lower or "-rt" in n_id_lower or "route table" in lbl_lower or "route-table" in lbl_lower or
-            "keyvault" in n_id_lower or "vault" in n_id_lower or
-            "pe-" in n_id_lower or "private endpoint" in lbl_lower or "private-endpoint" in lbl_lower or
-            "role-assignment" in n_id_lower or "role assignment" in lbl_lower or
-            n_type in ["SecurityNode", "MonitoringNode"]
-        ):
-            is_infra = True
+            if x_val < 0 or x_val > 1800 or y_val < 0 or y_val > 600:
+                node["position"] = {"x": float(
+                    30 + (idx % 4) * 250), "y": float(60 + (idx // 4) * 110)}
+
+        is_infra = (any(x in n_id_lower for x in ["nsg", "rt-", "-rt", "keyvault", "vault", "pe-", "role-assignment"]) or any(x in lbl_lower for x in ["nsg", "route table", "route-table", "private endpoint", "private-endpoint", "role assignment"]) or n_type in ["SecurityNode", "MonitoringNode"])
 
         if is_infra and "customMetadata" in node['data']:
             node['data'].pop("customMetadata", None)
 
         if 'style' not in node or not isinstance(node['style'], dict):
             node['style'] = {}
-            
+
         if 'provider' not in node['data']:
             node['data']['provider'] = provider
         if 'subnet' not in node['data']:
             node['data']['subnet'] = node.get('parentNode', '')
         if 'resource_type' not in node['data']:
-            node['data']['resource_type'] = str(node.get('type', 'resource')).lower()
+            node['data']['resource_type'] = str(
+                node.get('type', 'resource')).lower()
         if 'cost' not in node['data']:
             node['data']['cost'] = "~$25/mo"
         if 'estimated_monthly_cost' not in node['data']:
@@ -781,9 +782,10 @@ def post_process_nodes(nodes: List[Dict[str, Any]], provider: str, requirements:
             node['data']['terraform_resource'] = ''
         if 'cost_estimate' not in node['data']:
             node['data']['cost_estimate'] = node['data'].get('cost', '') or ''
-            
+
     # Sanitize parentNode references to prevent frontend crash
-    existing_node_ids = {str(n.get("id")).lower() for n in nodes if n.get("id")}
+    existing_node_ids = {str(n.get("id")).lower()
+                         for n in nodes if n.get("id")}
     for node in nodes:
         parent = node.get("parentNode")
         if parent:
@@ -795,7 +797,7 @@ def post_process_nodes(nodes: List[Dict[str, Any]], provider: str, requirements:
                 else:
                     node["parentNode"] = None
                     node["data"]["subnet"] = ""
-            
+
     return nodes
 
 
@@ -806,22 +808,24 @@ def normalize_and_validate_ai_topology(nodes: List[Dict[str, Any]], edges: List[
     without mutating position (coordinates), parentNode mappings, or container scopes.
     """
     ALLOWED_TYPES = {
-        "GatewayNode", "FrontendNode", "BackendNode", "DatabaseNode", "CacheNode", 
-        "StorageNode", "SecurityNode", "MonitoringNode", "RegionGroupNode", 
+        "GatewayNode", "FrontendNode", "BackendNode", "DatabaseNode", "CacheNode",
+        "StorageNode", "SecurityNode", "MonitoringNode", "RegionGroupNode",
         "ResourceGroupNode", "VNetGroupNode", "SubnetGroupNode"
     }
 
     # Filter out malformed nodes returned by the AI (no id, no type, non-dict)
-    nodes = [n for n in nodes if isinstance(n, dict) and n.get("id") is not None and str(n.get("id", "")).strip() != ""]
+    nodes = [n for n in nodes if isinstance(n, dict) and n.get(
+        "id") is not None and str(n.get("id", "")).strip() != ""]
 
     prov_lower = provider.lower()
     node_ids = {str(n.get("id")) for n in nodes if n.get("id")}
-    
+
     # Extract VNet CIDR to align subnets
     vnet_cidr_val = "10.0.0.0/16"
     if requirements:
-        vnet_cidr_val = getattr(requirements, "vnetCIDR", None) or getattr(requirements, "vnet_cidr", None) or "10.0.0.0/16"
-    
+        vnet_cidr_val = getattr(requirements, "vnetCIDR", None) or getattr(
+            requirements, "vnet_cidr", None) or "10.0.0.0/16"
+
     for n in nodes:
         nid_l = str(n.get("id", "")).lower()
         ntype = str(n.get("type", ""))
@@ -831,19 +835,19 @@ def normalize_and_validate_ai_topology(nodes: List[Dict[str, Any]], edges: List[
             if match_ip:
                 vnet_cidr_val = match_ip.group(1)
                 break
-                
+
     ip_prefix = "10.0"
     match_cidr = re.match(r"^(\d+\.\d+)", vnet_cidr_val)
     if match_cidr:
         ip_prefix = match_cidr.group(1)
-        
+
     for idx, node in enumerate(nodes):
         node['data'] = node.get('data') or {}
         n_id = str(node.get("id", ""))
         n_id_lower = n_id.lower()
         lbl_lower = str(node['data'].get("label", "")).lower()
         n_type = str(node.get("type", ""))
-        
+
         # 1. Node Type Normalization
         if n_type not in ALLOWED_TYPES:
             mapped_type = "BackendNode"
@@ -867,7 +871,7 @@ def normalize_and_validate_ai_topology(nodes: List[Dict[str, Any]], edges: List[
                 mapped_type = "GatewayNode"
             elif any(x in n_id or x in lbl_lower for x in ["frontend", "web", "spa"]):
                 mapped_type = "FrontendNode"
-            
+
             node["type"] = mapped_type
             n_type = mapped_type
 
@@ -892,7 +896,8 @@ def normalize_and_validate_ai_topology(nodes: List[Dict[str, Any]], edges: List[
                 label = str(node["data"].get("label", ""))
                 match_sub_ip = re.search(r"(\d+\.\d+)\.(\d+\.\d+/\d+)", label)
                 if match_sub_ip:
-                    node["data"]["label"] = label.replace(match_sub_ip.group(1), ip_prefix)
+                    node["data"]["label"] = label.replace(
+                        match_sub_ip.group(1), ip_prefix)
 
         # Enforce Route Tables, NSGs, WAF policies, and Firewalls to be SecurityNode
         if "rt-" in n_id or "route table" in lbl_lower or "route-table" in lbl_lower:
@@ -949,42 +954,38 @@ def normalize_and_validate_ai_topology(nodes: List[Dict[str, Any]], edges: List[
                 node["data"]["typeSubText"] = "google_compute_firewall"
 
         # 2. Metadata Normalization
-        # Strip customMetadata from infrastructure nodes
-        is_infra = False
-        if (
-            "nsg" in n_id_lower or "nsg" in lbl_lower or 
-            "rt-" in n_id_lower or "-rt" in n_id_lower or "route table" in lbl_lower or "route-table" in lbl_lower or
-            "keyvault" in n_id_lower or "vault" in n_id_lower or
-            "pe-" in n_id_lower or "private endpoint" in lbl_lower or "private-endpoint" in lbl_lower or
-            "role-assignment" in n_id_lower or "role assignment" in lbl_lower or
-            n_type in ["SecurityNode", "MonitoringNode"]
-        ):
-            is_infra = True
+        is_infra = (any(x in n_id_lower for x in ["nsg", "rt-", "-rt", "keyvault", "vault", "pe-", "role-assignment"]) or any(x in lbl_lower for x in ["nsg", "route table", "route-table", "private endpoint", "private-endpoint", "role assignment"]) or n_type in ["SecurityNode", "MonitoringNode"])
 
         if is_infra and "customMetadata" in node['data']:
             node['data'].pop("customMetadata", None)
 
         if 'style' not in node or not isinstance(node['style'], dict):
             node['style'] = {}
-            
+
         if 'position' not in node or not isinstance(node['position'], dict):
-            node['position'] = {'x': float((idx % 5) * 200), 'y': float((idx // 5) * 150)}
+            node['position'] = {'x': float(
+                (idx % 5) * 200), 'y': float((idx // 5) * 150)}
         else:
             node['position']['x'] = float(node['position'].get('x', 0.0))
             node['position']['y'] = float(node['position'].get('y', 0.0))
 
         # Populate required metadata fields (without changing coordinates or parentNode)
-        node['data']['resource_id'] = node['data'].get('resource_id') or node.get('id', '')
-        node['data']['resource_type'] = node['data'].get('resource_type') or str(node.get('type', 'resource')).lower()
+        node['data']['resource_id'] = node['data'].get(
+            'resource_id') or node.get('id', '')
+        node['data']['resource_type'] = node['data'].get(
+            'resource_type') or str(node.get('type', 'resource')).lower()
         if 'terraform_resource' not in node['data']:
             node['data']['terraform_resource'] = ''
         node['data']['provider'] = node['data'].get('provider') or provider
-        node['data']['subnet'] = node['data'].get('subnet') or node.get('parentNode', '') or ''
-        node['data']['cost_estimate'] = node['data'].get('cost_estimate') or node['data'].get('cost', '') or ''
-        
+        node['data']['subnet'] = node['data'].get(
+            'subnet') or node.get('parentNode', '') or ''
+        node['data']['cost_estimate'] = node['data'].get(
+            'cost_estimate') or node['data'].get('cost', '') or ''
+
         if 'estimated_monthly_cost' not in node['data']:
             try:
-                cost_val = float(re.sub(r'[^\d.]', '', str(node['data'].get('cost_estimate', '25'))))
+                cost_val = float(re.sub(r'[^\d.]', '', str(
+                    node['data'].get('cost_estimate', '25'))))
                 node['data']['estimated_monthly_cost'] = cost_val
             except Exception:
                 node['data']['estimated_monthly_cost'] = 25.0
@@ -1003,14 +1004,14 @@ def normalize_and_validate_ai_topology(nodes: List[Dict[str, Any]], edges: List[
             edge["source"] = edge["from"]
         if "to" in edge and "target" not in edge:
             edge["target"] = edge["to"]
-            
+
         src = edge.get("source")
         tgt = edge.get("target")
         if src in node_ids and tgt in node_ids:
             if "id" not in edge or not edge.get("id"):
                 edge["id"] = f"edge-{src}-{tgt}"
             valid_edges.append(edge)
-            
+
     return nodes, valid_edges
 
 
@@ -1032,22 +1033,22 @@ def rebuild_services_registry(nodes: List[Dict[str, Any]]) -> List[Dict[str, Any
         n_type = node.get("type")
         if n_type in ["RegionGroupNode", "ResourceGroupNode", "VNetGroupNode", "SubnetGroupNode"]:
             continue
-        
+
         node_id = node.get("id")
         if not node_id:
             continue
-            
+
         label = node.get("data", {}).get("label") or node_id
         service_name = label
-        
+
         if service_name.lower() in seen:
             continue
-            
+
         seen.add(service_name.lower())
-        
+
         category = category_map.get(n_type, "infrastructure")
         description = f"Managed {label} resource deployed in the topology."
-        
+
         services.append({
             "name": service_name,
             "category": category,
@@ -1076,11 +1077,11 @@ def deduplicate_shared_resources(nodes: List[Dict[str, Any]], edges: List[Dict[s
         "postgresql": lambda nid, lbl: ("postgresql" in nid or "postgres" in nid or "postgresql" in lbl or "postgres" in lbl) and not any(x in nid or x in lbl for x in ["replica", "pe-", "private-endpoint", "private endpoint"]),
         "container-app": lambda nid, lbl: ("container-app" in nid or "container app" in lbl or "containerapp" in nid or "container_app" in nid or "container_app" in lbl) and not any(x in nid or x in lbl for x in ["pe-", "private-endpoint", "private endpoint", "registry"])
     }
-    
+
     retained_nodes = {}  # category -> node_id
     nodes_to_remove = set()
     node_id_map = {}     # duplicate_node_id -> retained_node_id
-    
+
     # First pass: identify duplicates
     for node in nodes:
         n_type = node.get("type", "")
@@ -1088,50 +1089,50 @@ def deduplicate_shared_resources(nodes: List[Dict[str, Any]], edges: List[Dict[s
             continue
         nid = str(node.get("id", "")).lower()
         lbl = str(node.get("data", {}).get("label", "")).lower()
-        
+
         matched_category = None
         for cat, matcher in categories.items():
             if matcher(nid, lbl):
                 matched_category = cat
                 break
-        
+
         if matched_category:
             if matched_category in retained_nodes:
                 nodes_to_remove.add(node.get("id"))
                 node_id_map[node.get("id")] = retained_nodes[matched_category]
             else:
                 retained_nodes[matched_category] = node.get("id")
-                
+
     if not nodes_to_remove:
         return nodes, edges
-        
+
     new_nodes = [n for n in nodes if n.get("id") not in nodes_to_remove]
-    
+
     new_edges = []
     seen_edges = set()
     node_id_map_lower = {k.lower(): v for k, v in node_id_map.items()}
     for edge in edges:
         src = edge.get("source")
         tgt = edge.get("target")
-        
+
         src_lower = str(src).lower() if src else ""
         tgt_lower = str(tgt).lower() if tgt else ""
         new_src = node_id_map_lower.get(src_lower, src)
         new_tgt = node_id_map_lower.get(tgt_lower, tgt)
-        
+
         if new_src == new_tgt:
             continue
         edge_key = (str(new_src).lower(), str(new_tgt).lower())
         if edge_key in seen_edges:
             continue
-            
+
         seen_edges.add(edge_key)
         new_edge = dict(edge)
         new_edge["source"] = new_src
         new_edge["target"] = new_tgt
         new_edge["id"] = f"e-{new_src}-{new_tgt}"
         new_edges.append(new_edge)
-        
+
     return new_nodes, new_edges
 
 
@@ -1146,33 +1147,31 @@ def _count_real_subnets(nodes: List[Dict[str, Any]]) -> int:
 def validate_and_gate_architecture(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]], complexity_warnings: List[str] = None, compute_type: str = None, database_type: str = None, provider: str = None, requirements: Any = None) -> List[str]:
     if complexity_warnings is None:
         complexity_warnings = []
-    
+
     validation_findings = []
     consistency_warnings = []
-    
+
     node_ids = {n.get("id") for n in nodes if n.get("id") is not None}
-    node_labels = {str(n.get("data", {}).get("label") or "").lower() for n in nodes}
     node_types = {n.get("type") for n in nodes if n.get("type") is not None}
     subnet_count = _count_real_subnets(nodes)
-    
+
     # 1. Quality Gate Checks
     # Validate dynamic subnets exist
     if subnet_count == 0:
-        validation_findings.append("Quality Gate: Virtual Network subnets are missing. At least one subnet node (SubnetGroupNode) is required.")
+        validation_findings.append(
+            "Quality Gate: Virtual Network subnets are missing. At least one subnet node (SubnetGroupNode) is required.")
 
     # Validate VNet exists
     has_vnet = "VNetGroupNode" in node_types or any("vnet" in str(nid).lower() or "vpc" in str(nid).lower() for nid in node_ids)
     if not has_vnet:
-        validation_findings.append("Quality Gate: VNet/VPC group node is missing.")
+        validation_findings.append(
+            "Quality Gate: VNet/VPC group node is missing.")
 
     # Validate Compute platform exists
-    has_compute = any(
-        n_type in ["BackendNode", "FrontendNode"] or 
-        any(x in str(nid).lower() for x in ["cluster", "env", "plan", "aks", "compute"])
-        for nid, n_type in zip(node_ids, node_types)
-    )
+    has_compute = any(n_type in ["BackendNode", "FrontendNode"] or any(x in str(nid).lower() for x in ["cluster", "env", "plan", "aks", "compute"]) for nid, n_type in zip(node_ids, node_types))
     if not has_compute:
-        validation_findings.append("Quality Gate: Compute engine platform node is missing.")
+        validation_findings.append(
+            "Quality Gate: Compute engine platform node is missing.")
 
     # 1e. Assess Workload Risk
     def get_req_val(key, default=None):
@@ -1183,18 +1182,16 @@ def validate_and_gate_architecture(nodes: List[Dict[str, Any]], edges: List[Dict
         return getattr(requirements, key, default)
 
     app_desc = str(get_req_val("app_description", "") or get_req_val("appDescription", "")).lower()
-    app_type = str(get_req_val("application_type", "") or get_req_val("applicationType", "")).lower()
-    workload_profile = str(get_req_val("workload_profile", "")).lower()
 
     compliance_str = str(get_req_val("security_level", "") or get_req_val("compliance_standards", "")).lower()
     sensitivity_str = str(get_req_val("security_level", "") or get_req_val("data_sensitivity", "")).lower()
     availability_target = str(get_req_val("availability_target", "") or get_req_val("availability_requirements", "")).lower()
     budget_str = str(get_req_val("monthly_budget", "")).lower()
-    
+
     has_pci_or_sensitive = any(c in compliance_str or c in sensitivity_str for c in ["pci", "hipaa", "gdpr", "soc2", "iso27001", "high", "critical"])
     is_enterprise = any(b in budget_str for b in ["enterprise", "unlimited", "5000", "50000"])
     is_mission_critical = any(a in availability_target for a in ["high availability", "mission critical"])
-    
+
     requires_advanced_security = has_pci_or_sensitive or is_enterprise
     requires_backup_dr = is_mission_critical or any(s in sensitivity_str for s in ["high", "critical"])
 
@@ -1252,25 +1249,23 @@ def validate_and_gate_architecture(nodes: List[Dict[str, Any]], edges: List[Dict
     node_ids_lower = {str(n.get("id", "")).lower() for n in nodes}
     node_types_lower = {str(n.get("type", "")).lower() for n in nodes}
 
-    has_db_node = any(t == "databasenode" or any(db_kw in nid for db_kw in ["db", "database", "postgres", "mysql", "cosmos", "sql"]) for nid, t in zip(node_ids_lower, node_types_lower))
-    has_storage_node = any(t == "storagenode" or any(st_kw in nid for st_kw in ["storage", "blob", "bucket", "s3"]) for nid, t in zip(node_ids_lower, node_types_lower))
-    has_cache_node = any(t == "cachenode" or "cache" in nid or "redis" in nid for nid, t in zip(node_ids_lower, node_types_lower))
-    has_cdn_node = any("cdn" in nid or "frontdoor" in nid or "front-door" in nid or "cloudfront" in nid for nid in node_ids_lower)
-    has_auth_vault = any(str(n.get("type", "")).lower() == "securitynode" and any(k in str(n.get("id", "")).lower() or k in str(n.get("data", {}).get("label", "")).lower() for k in ["vault", "keyvault", "secret", "identity", "auth"]) for n in nodes)
-    has_monitoring_node = any(t == "monitoringnode" or any(m_kw in nid for m_kw in ["monitor", "insights", "analytics", "log-analytics"]) for nid, t in zip(node_ids_lower, node_types_lower))
-    has_backup = any(any(k in nid for k in ["backup", "recovery", "vault"]) and "key" not in nid for nid in node_ids_lower)
-    has_nsgs = any(any(k in nid for k in ["nsg", "security-group", "security_group", "firewall"]) for nid in node_ids_lower)
-    has_rt = any(any(k in nid for k in ["rt-", "route-table", "routetable", "route_table"]) for nid in node_ids_lower)
-    has_pe = any("pe-" in nid or "pe_" in nid or "private-endpoint" in nid or "privateendpoint" in nid or "private endpoint" in str(n.get("data", {}).get("label", "")).lower() for n in nodes for nid in [str(n.get("id", "")).lower()])
+    has_storage_node = any(t == "storagenode" or any(st_kw in nid for st_kw in [
+                           "storage", "blob", "bucket", "s3"]) for nid, t in zip(node_ids_lower, node_types_lower))
+    has_cache_node = any(t == "cachenode" or "cache" in nid or "redis" in nid for nid, t in zip(
+        node_ids_lower, node_types_lower))
+    has_auth_vault = any(str(n.get("type", "")).lower() == "securitynode" and any(k in str(n.get("id", "")).lower() or k in str(
+        n.get("data", {}).get("label", "")).lower() for k in ["vault", "keyvault", "secret", "identity", "auth"]) for n in nodes)
+    has_backup = any(any(k in nid for k in [
+                     "backup", "recovery", "vault"]) and "key" not in nid for nid in node_ids_lower)
+    has_nsgs = any(any(k in nid for k in [
+                   "nsg", "security-group", "security_group", "firewall"]) for nid in node_ids_lower)
+    has_rt = any(any(k in nid for k in [
+                 "rt-", "route-table", "routetable", "route_table"]) for nid in node_ids_lower)
+    has_cdn_node = any(x in nid for nid in node_ids_lower for x in ["cdn", "frontdoor", "front-door", "cloudfront"])
     has_messaging = any(any(m in nid for m in ["queue", "event", "bus", "pubsub", "sns", "sqs", "messaging", "servicebus"]) for nid in node_ids_lower)
-    
-    has_gpu = any(
-        "gpu" in str(n.get("id", "")).lower() or 
-        "gpu" in str(n.get("data", {}).get("label", "")).lower() or 
-        "gpu" in str((n.get("data", {}).get("customMetadata") or {}).get("pricingTier", "")).lower() or
-        "gpu" in str((n.get("data", {}).get("customMetadata") or {}).get("vmSize", "")).lower()
-        for n in nodes
-    )
+    has_pe = any(any(x in str(n.get("id", "")).lower() or x in str(n.get("data", {}).get("label", "")).lower() for x in ["pe-", "pe_", "private-endpoint", "privateendpoint", "private endpoint"]) for n in nodes)
+
+    has_gpu = any("gpu" in str(n.get("id", "")).lower() or "gpu" in str(n.get("data", {}).get("label", "")).lower() or "gpu" in str((n.get("data", {}).get("customMetadata") or {}).get("pricingTier", "")).lower() or "gpu" in str((n.get("data", {}).get("customMetadata") or {}).get("vmSize", "")).lower() for n in nodes)
 
     # Validate against capabilities
     def add_finding(capability_key, msg_fail, msg_recommend):
@@ -1286,7 +1281,7 @@ def validate_and_gate_architecture(nodes: List[Dict[str, Any]], edges: List[Dict
                 "Missing Capability: Object Storage. Reason: Application requires file upload/storage capability.",
                 "Recommendation: Object storage may be beneficial because application requires file upload/storage capability."
             )
-            
+
     if "caching" in required_caps:
         if not has_cache_node:
             add_finding(
@@ -1294,7 +1289,7 @@ def validate_and_gate_architecture(nodes: List[Dict[str, Any]], edges: List[Dict
                 "Missing Capability: Caching. Reason: Expected scale or workload caching capability is missing.",
                 "Recommendation: Caching/Redis may improve performance for high concurrent user load."
             )
-            
+
     if "secrets_management" in required_caps or requires_advanced_security:
         if not has_auth_vault:
             add_finding(
@@ -1302,13 +1297,13 @@ def validate_and_gate_architecture(nodes: List[Dict[str, Any]], edges: List[Dict
                 "Missing Capability: Secrets Management. Reason: Sensitive credentials/keys vault security is missing.",
                 "Recommendation: Secrets management (Key Vault/Secrets Manager) is recommended to secure sensitive credentials."
             )
-            
+
     if "disaster_recovery" in required_caps or requires_backup_dr:
         if not has_backup:
             validation_findings.append(
                 "Recommendation: Disaster Recovery may be beneficial because availability requirements are high. Reason: Backup and recovery strategies are not represented in the architecture."
             )
-            
+
     if "secure_connectivity" in required_caps or requires_advanced_security:
         if not has_pe:
             # Always advisory — private endpoints are AI architectural decisions, not hard gates
@@ -1328,13 +1323,13 @@ def validate_and_gate_architecture(nodes: List[Dict[str, Any]], edges: List[Dict
                 "Missing Capability: GPU Compute. Reason: AI inference or GPU-capable compute resources are required.",
                 "Recommendation: GPU compute resources may be beneficial for AI inference workloads."
             )
-            
+
     if "messaging" in required_caps:
         if not has_messaging:
             validation_findings.append(
                 "Recommendation: Messaging/Eventing may improve scalability for asynchronous workloads. Reason: Queuing, message queuing, or eventing service is missing for notifications or async tasks."
             )
-            
+
     if "global_distribution" in required_caps:
         if not has_cdn_node:
             add_finding(
@@ -1345,77 +1340,96 @@ def validate_and_gate_architecture(nodes: List[Dict[str, Any]], edges: List[Dict
 
     # Fail validation if node renderer cannot resolve a node type
     ALLOWED_TYPES = {
-        "GatewayNode", "FrontendNode", "BackendNode", "DatabaseNode", "CacheNode", 
-        "StorageNode", "SecurityNode", "MonitoringNode", "RegionGroupNode", 
+        "GatewayNode", "FrontendNode", "BackendNode", "DatabaseNode", "CacheNode",
+        "StorageNode", "SecurityNode", "MonitoringNode", "RegionGroupNode",
         "ResourceGroupNode", "VNetGroupNode", "SubnetGroupNode"
     }
     for node in nodes:
         n_type = node.get("type")
         if n_type not in ALLOWED_TYPES:
-            validation_findings.append(f"Quality Gate: Node renderer cannot resolve node type '{n_type}' for node '{node.get('id')}'.")
+            validation_findings.append(
+                f"Quality Gate: Node renderer cannot resolve node type '{n_type}' for node '{node.get('id')}'.")
 
     # 1b. Provider Locking Rules
     # Detect provider from nodes or default
-    prov_detect = (provider or next((str(n.get("data", {}).get("provider")).lower() for n in nodes if n.get("data", {}).get("provider")), "azure")).lower()
-    
+    prov_detect = (provider or next((str(n.get("data", {}).get("provider")).lower(
+    ) for n in nodes if n.get("data", {}).get("provider")), "azure")).lower()
+
     if prov_detect == "azure":
-        forbidden_keywords = ["eks", "rds", "s3", "cloudfront", "alb", "cloudwatch", "aws_", "gke", "cloud-sql", "cloudsql", "cloud-storage", "google_"]
+        forbidden_keywords = ["eks", "rds", "s3", "cloudfront", "alb", "cloudwatch",
+                              "aws_", "gke", "cloud-sql", "cloudsql", "cloud-storage", "google_"]
         for n in nodes:
             n_id = str(n.get("id", "")).lower()
             n_tf = str(n.get("data", {}).get("terraform_resource", "")).lower()
             if any(kw in n_id or kw in n_tf for kw in forbidden_keywords):
-                validation_findings.append(f"Provider Locking: Azure is selected, but forbidden resource '{n_id}' or type '{n_tf}' was generated.")
+                validation_findings.append(
+                    f"Provider Locking: Azure is selected, but forbidden resource '{n_id}' or type '{n_tf}' was generated.")
     elif prov_detect == "aws":
-        forbidden_keywords = ["aks", "azurerm_", "app-gateway", "appgateway", "appgw", "keyvault", "key-vault", "azure-monitor", "gke", "cloud-sql", "cloudsql", "cloud-storage", "google_"]
+        forbidden_keywords = ["aks", "azurerm_", "app-gateway", "appgateway", "appgw", "keyvault",
+                              "key-vault", "azure-monitor", "gke", "cloud-sql", "cloudsql", "cloud-storage", "google_"]
         for n in nodes:
             n_id = str(n.get("id", "")).lower()
             n_tf = str(n.get("data", {}).get("terraform_resource", "")).lower()
             if any(kw in n_id or kw in n_tf for kw in forbidden_keywords):
-                validation_findings.append(f"Provider Locking: AWS is selected, but forbidden resource '{n_id}' or type '{n_tf}' was generated.")
+                validation_findings.append(
+                    f"Provider Locking: AWS is selected, but forbidden resource '{n_id}' or type '{n_tf}' was generated.")
     elif prov_detect == "gcp":
-        forbidden_keywords = ["aks", "azurerm_", "app-gateway", "appgateway", "appgw", "keyvault", "key-vault", "azure-monitor", "eks", "rds", "s3", "cloudfront", "alb", "cloudwatch", "aws_"]
+        forbidden_keywords = ["aks", "azurerm_", "app-gateway", "appgateway", "appgw", "keyvault",
+                              "key-vault", "azure-monitor", "eks", "rds", "s3", "cloudfront", "alb", "cloudwatch", "aws_"]
         for n in nodes:
             n_id = str(n.get("id", "")).lower()
             n_tf = str(n.get("data", {}).get("terraform_resource", "")).lower()
             if any(kw in n_id or kw in n_tf for kw in forbidden_keywords):
-                validation_findings.append(f"Provider Locking: GCP is selected, but forbidden resource '{n_id}' or type '{n_tf}' was generated.")
+                validation_findings.append(
+                    f"Provider Locking: GCP is selected, but forbidden resource '{n_id}' or type '{n_tf}' was generated.")
 
     # 1c. Compute Platform Locking Rules
     if compute_type:
         comp_lower = str(compute_type).lower()
         if "kubernetes" in comp_lower or "aks" in comp_lower or "eks" in comp_lower or "gke" in comp_lower:
             # Kubernetes allowed. App Service, Container Apps forbidden.
-            forbidden = ["app-service", "appservice", "web-app", "webapp", "container-app", "containerapp", "azurerm_linux_web_app", "azurerm_container_app", "aws_elastic_beanstalk", "aws_ecs", "google_cloud_run"]
+            forbidden = ["app-service", "appservice", "web-app", "webapp", "container-app", "containerapp",
+                         "azurerm_linux_web_app", "azurerm_container_app", "aws_elastic_beanstalk", "aws_ecs", "google_cloud_run"]
             for n in nodes:
                 n_id = str(n.get("id", "")).lower()
-                n_tf = str(n.get("data", {}).get("terraform_resource", "")).lower()
+                n_tf = str(n.get("data", {}).get(
+                    "terraform_resource", "")).lower()
                 if any(f in n_id or f in n_tf for f in forbidden):
-                    validation_findings.append(f"Compute Locking: Kubernetes is selected, but forbidden compute resource '{n_id}' or type '{n_tf}' was generated.")
+                    validation_findings.append(
+                        f"Compute Locking: Kubernetes is selected, but forbidden compute resource '{n_id}' or type '{n_tf}' was generated.")
         elif "app service" in comp_lower or "web app" in comp_lower:
             # App Service allowed. Kubernetes, Container Apps forbidden.
-            forbidden = ["aks-", "eks-", "gke-", "kubernetes", "node-pool", "nodepool", "container-app", "containerapp", "azurerm_kubernetes_cluster", "azurerm_container_app", "aws_eks", "aws_ecs", "google_container_cluster", "google_cloud_run"]
+            forbidden = ["aks-", "eks-", "gke-", "kubernetes", "node-pool", "nodepool", "container-app", "containerapp",
+                         "azurerm_kubernetes_cluster", "azurerm_container_app", "aws_eks", "aws_ecs", "google_container_cluster", "google_cloud_run"]
             for n in nodes:
                 n_id = str(n.get("id", "")).lower()
-                n_tf = str(n.get("data", {}).get("terraform_resource", "")).lower()
+                n_tf = str(n.get("data", {}).get(
+                    "terraform_resource", "")).lower()
                 if any(f in n_id or f in n_tf for f in forbidden):
-                    validation_findings.append(f"Compute Locking: App Service is selected, but forbidden compute resource '{n_id}' or type '{n_tf}' was generated.")
+                    validation_findings.append(
+                        f"Compute Locking: App Service is selected, but forbidden compute resource '{n_id}' or type '{n_tf}' was generated.")
         elif "container app" in comp_lower:
             # Container Apps allowed. Kubernetes, App Service forbidden.
-            forbidden = ["aks-", "eks-", "gke-", "kubernetes", "node-pool", "nodepool", "app-service", "appservice", "web-app", "webapp", "azurerm_kubernetes_cluster", "azurerm_linux_web_app", "aws_eks", "aws_elastic_beanstalk", "google_container_cluster", "google_app_engine"]
+            forbidden = ["aks-", "eks-", "gke-", "kubernetes", "node-pool", "nodepool", "app-service", "appservice", "web-app", "webapp",
+                         "azurerm_kubernetes_cluster", "azurerm_linux_web_app", "aws_eks", "aws_elastic_beanstalk", "google_container_cluster", "google_app_engine"]
             for n in nodes:
                 n_id = str(n.get("id", "")).lower()
-                n_tf = str(n.get("data", {}).get("terraform_resource", "")).lower()
+                n_tf = str(n.get("data", {}).get(
+                    "terraform_resource", "")).lower()
                 if any(f in n_id or f in n_tf for f in forbidden):
-                    validation_findings.append(f"Compute Locking: Container Apps is selected, but forbidden compute resource '{n_id}' or type '{n_tf}' was generated.")
+                    validation_findings.append(
+                        f"Compute Locking: Container Apps is selected, but forbidden compute resource '{n_id}' or type '{n_tf}' was generated.")
 
     # 1d. Edge Source/Target Existence Validation
     for edge in edges:
         src = edge.get("source")
         tgt = edge.get("target")
         if src not in node_ids:
-            consistency_warnings.append(f"Edge Validation: Edge '{edge.get('id')}' references non-existent source node '{src}'.")
+            consistency_warnings.append(
+                f"Edge Validation: Edge '{edge.get('id')}' references non-existent source node '{src}'.")
         if tgt not in node_ids:
-            consistency_warnings.append(f"Edge Validation: Edge '{edge.get('id')}' references non-existent target node '{tgt}'.")
+            consistency_warnings.append(
+                f"Edge Validation: Edge '{edge.get('id')}' references non-existent target node '{tgt}'.")
 
     # 2. Consistency Gate Checks
     non_replica_labels = {}
@@ -1428,10 +1442,11 @@ def validate_and_gate_architecture(nodes: List[Dict[str, Any]], edges: List[Dict
 
         # Check duplicate labels (excluding replica/standby)
         is_replica = "replica" in n_id_lower or "standby" in n_id_lower or "replica" in lbl_lower or "standby" in lbl_lower or "backup" in n_id_lower or "backup" in lbl_lower
-        
+
         if not is_replica and n_type not in ["RegionGroupNode", "ResourceGroupNode", "VNetGroupNode", "SubnetGroupNode"]:
             if lbl_lower in non_replica_labels:
-                consistency_warnings.append(f"Advisory: Consistency Gate: Duplicate node label '{lbl}' detected (node IDs: '{non_replica_labels[lbl_lower]}' and '{n_id}').")
+                consistency_warnings.append(
+                    f"Advisory: Consistency Gate: Duplicate node label '{lbl}' detected (node IDs: '{non_replica_labels[lbl_lower]}' and '{n_id}').")
             else:
                 non_replica_labels[lbl_lower] = n_id
 
@@ -1440,10 +1455,12 @@ def validate_and_gate_architecture(nodes: List[Dict[str, Any]], edges: List[Dict
         subnet_meta = node.get("data", {}).get("subnet", "")
         if parent:
             if parent not in node_ids:
-                consistency_warnings.append(f"Advisory: Consistency Gate: Node '{n_id}' references non-existent parentNode '{parent}'.")
+                consistency_warnings.append(
+                    f"Advisory: Consistency Gate: Node '{n_id}' references non-existent parentNode '{parent}'.")
             elif parent.startswith("subnet-") or parent.startswith("snet-"):
                 if subnet_meta and subnet_meta != parent:
-                    consistency_warnings.append(f"Advisory: Consistency Gate: Node '{n_id}' has parentNode '{parent}' but subnet metadata '{subnet_meta}' mismatch.")
+                    consistency_warnings.append(
+                        f"Advisory: Consistency Gate: Node '{n_id}' has parentNode '{parent}' but subnet metadata '{subnet_meta}' mismatch.")
 
     return validation_findings + consistency_warnings + complexity_warnings
 
@@ -1458,7 +1475,7 @@ def compute_node_cost(node: Dict[str, Any], region: str = "eastus") -> float:
     n_id = str(node.get("id", "")).lower()
     data = node.get("data", {})
     meta = data.get("customMetadata") or {}
-    
+
     # Base cost catalog by node type
     base_costs = {
         "GatewayNode": 60.0,
@@ -1470,20 +1487,20 @@ def compute_node_cost(node: Dict[str, Any], region: str = "eastus") -> float:
         "SecurityNode": 15.0,
         "MonitoringNode": 20.0,
     }
-    
+
     # Skip group/container nodes
     if n_type in ("RegionGroupNode", "ResourceGroupNode", "VNetGroupNode", "SubnetGroupNode"):
         return 0.0
-    
+
     base = base_costs.get(n_type, 25.0)
-    
+
     # SKU tier adjustments
     tier = str(meta.get("pricingTier", "Standard"))
     if tier == "Premium":
         base *= 2.0
     elif tier == "Basic":
         base *= 0.5
-    
+
     # Replica multiplier
     replicas = 1
     try:
@@ -1492,16 +1509,16 @@ def compute_node_cost(node: Dict[str, Any], region: str = "eastus") -> float:
         pass
     if replicas > 1 and n_type == "BackendNode":
         base *= min(replicas, 5)  # cap at 5x for cost
-    
+
     # Special overrides
     estimated = data.get("estimated_monthly_cost")
     if estimated and isinstance(estimated, (int, float)) and estimated > 0:
         return float(estimated)
-    
+
     # NSG and Route Table nodes are free
     if any(x in n_id for x in ["nsg-", "rt-", "role-assignment", "managed-identity", "backup-policy"]):
         return 0.0
-    
+
     return round(base, 2)
 
 
@@ -1517,7 +1534,8 @@ def compute_architecture_scores(nodes: List[Dict[str, Any]], edges: List[Dict[st
     - architecture_score: Weighted average of the above (highest weight on requirement coverage)
     """
     node_ids_lower = {str(n.get("id", "")).lower() for n in nodes}
-    node_labels_lower = {str(n.get("data", {}).get("label", "")).lower() for n in nodes}
+    node_labels_lower = {
+        str(n.get("data", {}).get("label", "")).lower() for n in nodes}
     node_types_lower = {str(n.get("type", "")).lower() for n in nodes}
 
     # Classify workload profile and extract requirements
@@ -1529,18 +1547,16 @@ def compute_architecture_scores(nodes: List[Dict[str, Any]], edges: List[Dict[st
         return getattr(requirements, key, default)
 
     app_desc = str(get_req_val("app_description", "") or get_req_val("appDescription", "")).lower()
-    app_type = str(get_req_val("application_type", "") or get_req_val("applicationType", "")).lower()
-    workload_profile = str(get_req_val("workload_profile", "")).lower()
 
     compliance_str = str(get_req_val("security_level", "") or get_req_val("compliance_standards", "")).lower()
     sensitivity_str = str(get_req_val("security_level", "") or get_req_val("data_sensitivity", "")).lower()
     availability_target = str(get_req_val("availability_target", "") or get_req_val("availability_requirements", "")).lower()
     budget_str = str(get_req_val("monthly_budget", "")).lower()
-    
+
     has_pci_or_sensitive = any(c in compliance_str or c in sensitivity_str for c in ["pci", "hipaa", "gdpr", "soc2", "iso27001", "high", "critical"])
     is_enterprise = any(b in budget_str for b in ["enterprise", "unlimited", "5000", "50000"])
     is_mission_critical = any(a in availability_target for a in ["high availability", "mission critical"])
-    
+
     requires_advanced_security = has_pci_or_sensitive or is_enterprise
     requires_backup_dr = is_mission_critical or any(s in sensitivity_str for s in ["high", "critical"])
 
@@ -1569,28 +1585,28 @@ def compute_architecture_scores(nodes: List[Dict[str, Any]], edges: List[Dict[st
             required_caps.append("global_distribution")
 
     # Identify nodes
-    has_db = any(t == "databasenode" or any(db_kw in nid for db_kw in ["db", "database", "postgres", "mysql", "cosmos", "sql"]) for nid, t in zip(node_ids_lower, node_types_lower))
-    has_storage = any(t == "storagenode" or any(st_kw in nid for st_kw in ["storage", "blob", "bucket", "s3"]) for nid, t in zip(node_ids_lower, node_types_lower))
-    has_cache = any(t == "cachenode" or "cache" in nid or "redis" in nid for nid, t in zip(node_ids_lower, node_types_lower))
-    has_cdn = any("cdn" in nid or "frontdoor" in nid or "front-door" in nid or "cloudfront" in nid for nid in node_ids_lower)
-    has_vault = any(str(n.get("type", "")).lower() == "securitynode" and any(k in str(n.get("id", "")).lower() or k in str(n.get("data", {}).get("label", "")).lower() for k in ["vault", "keyvault", "secret", "identity", "auth"]) for n in nodes)
-    has_backup = any(any(k in nid for k in ["backup", "recovery", "vault"]) and "key" not in nid for nid in node_ids_lower)
-    has_nsgs = any(any(k in nid for k in ["nsg", "security-group", "security_group", "firewall"]) for nid in node_ids_lower)
-    has_rt = any(any(k in nid for k in ["rt-", "route-table", "routetable", "route_table"]) for nid in node_ids_lower)
-    has_pe = any("pe-" in nid or "pe_" in nid or "private-endpoint" in nid or "privateendpoint" in nid or "private endpoint" in str(n.get("data", {}).get("label", "")).lower() for n in nodes for nid in [str(n.get("id", "")).lower()])
-    has_messaging = any(any(m in nid for m in ["queue", "event", "bus", "pubsub", "sns", "sqs", "messaging", "servicebus"]) for nid in node_ids_lower)
-    has_gpu = any(
-        "gpu" in str(n.get("id", "")).lower() or 
-        "gpu" in str(n.get("data", {}).get("label", "")).lower() or 
-        "gpu" in str((n.get("data", {}).get("customMetadata") or {}).get("pricingTier", "")).lower() or
-        "gpu" in str((n.get("data", {}).get("customMetadata") or {}).get("vmSize", "")).lower()
-        for n in nodes
-    )
-    has_compute = any(
-        n_type in ["backendnode", "frontendnode"] or 
-        any(x in nid.lower() for x in ["cluster", "env", "plan", "aks", "compute"])
-        for nid, n_type in zip(node_ids_lower, node_types_lower)
-    )
+    has_db = any(t == "databasenode" or any(db_kw in nid for db_kw in [
+                 "db", "database", "postgres", "mysql", "cosmos", "sql"]) for nid, t in zip(node_ids_lower, node_types_lower))
+    has_storage = any(t == "storagenode" or any(st_kw in nid for st_kw in [
+                      "storage", "blob", "bucket", "s3"]) for nid, t in zip(node_ids_lower, node_types_lower))
+    has_cache = any(t == "cachenode" or "cache" in nid or "redis" in nid for nid, t in zip(
+        node_ids_lower, node_types_lower))
+    has_cdn = any(
+        "cdn" in nid or "frontdoor" in nid or "front-door" in nid or "cloudfront" in nid for nid in node_ids_lower)
+    has_vault = any(str(n.get("type", "")).lower() == "securitynode" and any(k in str(n.get("id", "")).lower() or k in str(
+        n.get("data", {}).get("label", "")).lower() for k in ["vault", "keyvault", "secret", "identity", "auth"]) for n in nodes)
+    has_backup = any(any(k in nid for k in [
+                     "backup", "recovery", "vault"]) and "key" not in nid for nid in node_ids_lower)
+    has_nsgs = any(any(k in nid for k in [
+                   "nsg", "security-group", "security_group", "firewall"]) for nid in node_ids_lower)
+    has_rt = any(any(k in nid for k in [
+                 "rt-", "route-table", "routetable", "route_table"]) for nid in node_ids_lower)
+    has_pe = any("pe-" in nid or "pe_" in nid or "private-endpoint" in nid or "privateendpoint" in nid or "private endpoint" in str(
+        n.get("data", {}).get("label", "")).lower() for n in nodes for nid in [str(n.get("id", "")).lower()])
+    has_messaging = any(any(m in nid for m in [
+                        "queue", "event", "bus", "pubsub", "sns", "sqs", "messaging", "servicebus"]) for nid in node_ids_lower)
+    has_gpu = any("gpu" in str(n.get("id", "")).lower() or "gpu" in str(n.get("data", {}).get("label", "")).lower() or "gpu" in str((n.get("data", {}).get("customMetadata") or {}).get("pricingTier", "")).lower() or "gpu" in str((n.get("data", {}).get("customMetadata") or {}).get("vmSize", "")).lower() for n in nodes)
+    has_compute = any(n_type in ["backendnode", "frontendnode"] or any(x in nid.lower() for x in ["cluster", "env", "plan", "aks", "compute"]) for nid, n_type in zip(node_ids_lower, node_types_lower))
 
     cap_fulfillment = {
         "object_storage": has_storage,
@@ -1608,14 +1624,15 @@ def compute_architecture_scores(nodes: List[Dict[str, Any]], edges: List[Dict[st
     db_type_val = get_req_val("database_type") or get_req_val("databaseType")
     if db_type_val and str(db_type_val).lower() not in ["none", "no database", ""]:
         checklist.append(("database", has_db))
-    compute_type_val = get_req_val("computeType") or get_req_val("compute_type") or get_req_val("application_type") or get_req_val("applicationType")
+    compute_type_val = get_req_val("computeType") or get_req_val(
+        "compute_type") or get_req_val("application_type") or get_req_val("applicationType")
     if compute_type_val and str(compute_type_val).lower() not in ["none", ""]:
         checklist.append(("compute", has_compute))
-        
+
     for cap in required_caps:
         if cap in cap_fulfillment:
             checklist.append((cap, cap_fulfillment[cap]))
-            
+
     if checklist:
         satisfied_count = sum(1 for item, met in checklist if met)
         req_cov_score = int((satisfied_count / len(checklist)) * 100)
@@ -1639,14 +1656,15 @@ def compute_architecture_scores(nodes: List[Dict[str, Any]], edges: List[Dict[st
         if "secure_connectivity" in required_caps and not has_pe:
             sec_score -= 10
     sec_score = max(0, sec_score)
-    
+
     # Reliability Score (availability & recovery)
     rel_score = 100
     if requires_backup_dr:
         if not has_backup:
             rel_score -= 15
         # If DB exists, it should have replicas
-        has_replica = any("replica" in nid or "standby" in nid or "replica" in lbl for nid in node_ids_lower for lbl in node_labels_lower)
+        has_replica = any(
+            "replica" in nid or "standby" in nid or "replica" in lbl for nid in node_ids_lower for lbl in node_labels_lower)
         db_nodes = [n for n in nodes if n.get("type") == "DatabaseNode"]
         if has_db and (not has_replica or len(db_nodes) < 2):
             rel_score -= 15
@@ -1654,15 +1672,15 @@ def compute_architecture_scores(nodes: List[Dict[str, Any]], edges: List[Dict[st
         if "disaster_recovery" in required_caps and not has_backup:
             rel_score -= 15
     rel_score = max(0, rel_score)
-    
+
     # Scalability Score
     scal_score = 100
     users_scale = str(get_req_val("expected_users") or get_req_val("expectedUsers") or "").lower()
     is_high_scale = "100k" in users_scale or "1m" in users_scale or "high" in users_scale or "caching" in required_caps or "global_distribution" in required_caps
-    
+
     has_hpa = any("hpa" in nid or "autoscaler" in lbl or "autoscale" in lbl for nid in node_ids_lower for lbl in node_labels_lower)
     has_lb = any(x in nid or "loadbalancer" in lbl or "lb" in lbl or "gateway" in lbl or "alb" in lbl for nid in node_ids_lower for lbl in node_labels_lower for x in ["app-gateway", "appgw", "alb", "ingress-controller"])
-    
+
     if is_high_scale:
         if "caching" in required_caps and not has_cache:
             scal_score -= 15
@@ -1678,7 +1696,7 @@ def compute_architecture_scores(nodes: List[Dict[str, Any]], edges: List[Dict[st
     # Cost Efficiency Score (budget alignment & overengineering checks)
     total_cost = sum(compute_node_cost(n) for n in nodes)
     cost_score = 100
-    
+
     budget_limit = None
     budget_val = get_req_val("monthly_budget") or get_req_val("monthlyBudget")
     if budget_val:
@@ -1688,7 +1706,7 @@ def compute_architecture_scores(nodes: List[Dict[str, Any]], edges: List[Dict[st
                 budget_limit = float(match_digits[0])
             except ValueError:
                 pass
-                
+
     if budget_limit and budget_limit > 0:
         if total_cost > budget_limit:
             pct_over = ((total_cost - budget_limit) / budget_limit) * 100
@@ -1699,30 +1717,23 @@ def compute_architecture_scores(nodes: List[Dict[str, Any]], edges: List[Dict[st
             cost_score -= 20
         if total_cost > 5000:
             cost_score -= 20
-            
+
     if not requires_advanced_security and total_cost > 800:
         cost_score -= 20
     if len(nodes) > 40:
         cost_score -= 10
-        
+
     cost_score = max(0, cost_score)
-    
+
     # Terraform Alignment Score
     tf_score = 100
     tf_drift_warnings = [w for w in warnings if "Terraform Drift" in w]
     tf_score -= len(tf_drift_warnings) * 15
     tf_score = max(0, tf_score)
-    
+
     # Weighted average architecture score
-    arch_score = int(
-        req_cov_score * 0.30 +
-        sec_score * 0.20 +
-        rel_score * 0.15 +
-        scal_score * 0.15 +
-        cost_score * 0.10 +
-        tf_score * 0.10
-    )
-    
+    arch_score = int(req_cov_score * 0.30 + sec_score * 0.20 + rel_score * 0.15 + scal_score * 0.15 + cost_score * 0.10 + tf_score * 0.10)
+
     return {
         "requirement_coverage_score": req_cov_score,
         "security_score": sec_score,
@@ -1742,71 +1753,89 @@ def run_ai_validation_agent(nodes: List[Dict[str, Any]], edges: List[Dict[str, A
     """
     recommendations = []
     node_ids_lower = {str(n.get("id", "")).lower() for n in nodes}
-    node_labels_lower = {str(n.get("data", {}).get("label", "")).lower() for n in nodes}
-    
+    node_labels_lower = {
+        str(n.get("data", {}).get("label", "")).lower() for n in nodes}
+
     # 1. Private Endpoint coverage
     pe_targets = set()
     for nid in node_ids_lower:
         if nid.startswith("pe-"):
             target = nid.replace("pe-", "")
             pe_targets.add(target)
-    
+
     if "db-primary" in node_ids_lower and "db" not in pe_targets:
-        recommendations.append("Advisory: Private Endpoint missing for PostgreSQL database. Consider adding PE-DB for secure connectivity.")
+        recommendations.append(
+            "Advisory: Private Endpoint missing for PostgreSQL database. Consider adding PE-DB for secure connectivity.")
     if "redis" in node_ids_lower and "redis" not in pe_targets:
-        recommendations.append("Advisory: Private Endpoint missing for Redis Cache. Consider adding PE-Redis for secure connectivity.")
+        recommendations.append(
+            "Advisory: Private Endpoint missing for Redis Cache. Consider adding PE-Redis for secure connectivity.")
     if "storage-account" in node_ids_lower and "storage" not in pe_targets:
-        recommendations.append("Advisory: Private Endpoint missing for Storage Account. Consider adding PE-Storage for secure connectivity.")
-    
+        recommendations.append(
+            "Advisory: Private Endpoint missing for Storage Account. Consider adding PE-Storage for secure connectivity.")
+
     # 2. AKS best practices
     if "aks-cluster" in node_ids_lower:
         if "aks-hpa" not in node_ids_lower:
-            recommendations.append("Advisory: AKS cluster should have Horizontal Pod Autoscaler (HPA) configured for production workloads.")
+            recommendations.append(
+                "Advisory: AKS cluster should have Horizontal Pod Autoscaler (HPA) configured for production workloads.")
         if "acr" not in node_ids_lower:
-            recommendations.append("Advisory: AKS cluster should use Azure Container Registry (ACR) for container image storage.")
+            recommendations.append(
+                "Advisory: AKS cluster should use Azure Container Registry (ACR) for container image storage.")
         if not any("availability" in lbl or "zone" in lbl for lbl in node_labels_lower):
-            recommendations.append("Advisory: AKS cluster should use Availability Zones for high availability in production.")
-    
+            recommendations.append(
+                "Advisory: AKS cluster should use Availability Zones for high availability in production.")
+
     # 3. Redis tier
     for n in nodes:
         nid = str(n.get("id", "")).lower()
         if nid == "redis" and n.get("type") == "CacheNode":
             meta = n.get("data", {}).get("customMetadata") or {}
             if meta.get("pricingTier") != "Premium":
-                recommendations.append("Advisory: Redis should use Premium tier for HA features like persistence and geo-replication.")
-    
+                recommendations.append(
+                    "Advisory: Redis should use Premium tier for HA features like persistence and geo-replication.")
+
     # 4. Database HA
     db_count = len([n for n in nodes if n.get("type") == "DatabaseNode"])
-    has_replica = any("replica" in str(n.get("id", "")).lower() for n in nodes if n.get("type") == "DatabaseNode")
+    has_replica = any("replica" in str(n.get("id", "")).lower()
+                      for n in nodes if n.get("type") == "DatabaseNode")
     if db_count > 0 and not has_replica:
-        recommendations.append("Advisory: Database HA read-replica is missing. Deploy a standby replica for zero-downtime failover.")
-    
+        recommendations.append(
+            "Advisory: Database HA read-replica is missing. Deploy a standby replica for zero-downtime failover.")
+
     # 5. Monitoring completeness
     if "log-analytics" not in node_ids_lower:
-        recommendations.append("Advisory: Log Analytics Workspace is missing. Centralized logging is essential for observability.")
+        recommendations.append(
+            "Advisory: Log Analytics Workspace is missing. Centralized logging is essential for observability.")
     if "app-insights" not in node_ids_lower:
-        recommendations.append("Advisory: Application Insights is missing. APM telemetry is critical for performance monitoring.")
+        recommendations.append(
+            "Advisory: Application Insights is missing. APM telemetry is critical for performance monitoring.")
     if "diagnostic-settings" not in node_ids_lower:
-        recommendations.append("Advisory: Diagnostic Settings are missing. Enable diagnostics for AKS, databases, and gateways.")
-    
+        recommendations.append(
+            "Advisory: Diagnostic Settings are missing. Enable diagnostics for AKS, databases, and gateways.")
+
     # 6. Backup coverage
     if "backup-vault" not in node_ids_lower and "recovery-vault" not in node_ids_lower:
-        recommendations.append("Advisory: No Backup or Recovery Vault detected. Critical data should have automated backup policies.")
-    
+        recommendations.append(
+            "Advisory: No Backup or Recovery Vault detected. Critical data should have automated backup policies.")
+
     # 7. Edge validation
     valid_node_ids = {str(n.get("id")) for n in nodes if n.get("id")}
-    orphan_edges = [e for e in edges if e.get("source") not in valid_node_ids or e.get("target") not in valid_node_ids]
+    orphan_edges = [e for e in edges if e.get(
+        "source") not in valid_node_ids or e.get("target") not in valid_node_ids]
     if orphan_edges:
-        recommendations.append(f"Advisory: {len(orphan_edges)} edge(s) reference non-existent nodes. Verify topology connectivity.")
-    
+        recommendations.append(
+            f"Advisory: {len(orphan_edges)} edge(s) reference non-existent nodes. Verify topology connectivity.")
+
     return recommendations
 
 
 def heal_topology_gates(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]], provider: str, requirements: Any) -> tuple:
     node_ids = {str(n.get("id")).lower() for n in nodes if n.get("id")}
-    node_labels = {str(n.get("id")).lower(): str(n.get("data", {}).get("label", "")).lower() for n in nodes}
-    node_types = {str(n.get("id")).lower(): str(n.get("type", "")) for n in nodes}
-    
+    node_labels = {str(n.get("id")).lower(): str(
+        n.get("data", {}).get("label", "")).lower() for n in nodes}
+    node_types = {str(n.get("id")).lower(): str(n.get("type", ""))
+                  for n in nodes}
+
     # 1. Ensure VNet/Subnets exist
     nodes = ensure_container_nodes(nodes, provider, requirements)
     node_ids = {str(n.get("id")).lower() for n in nodes if n.get("id")}
@@ -1820,18 +1849,16 @@ def heal_topology_gates(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]]
         return getattr(requirements, key, default)
 
     app_desc = str(get_req_val("app_description", "") or get_req_val("appDescription", "")).lower()
-    app_type = str(get_req_val("application_type", "") or get_req_val("applicationType", "")).lower()
-    workload_profile = str(get_req_val("workload_profile", "")).lower()
 
     compliance_str = str(get_req_val("security_level", "") or get_req_val("compliance_standards", "")).lower()
     sensitivity_str = str(get_req_val("security_level", "") or get_req_val("data_sensitivity", "")).lower()
     availability_target = str(get_req_val("availability_target", "") or get_req_val("availability_requirements", "")).lower()
     budget_str = str(get_req_val("monthly_budget", "")).lower()
-    
+
     has_pci_or_sensitive = any(c in compliance_str or c in sensitivity_str for c in ["pci", "hipaa", "gdpr", "soc2", "iso27001", "high", "critical"])
     is_enterprise = any(b in budget_str for b in ["enterprise", "unlimited", "5000", "50000"])
     is_mission_critical = any(a in availability_target for a in ["high availability", "mission critical"])
-    
+
     requires_advanced_security = has_pci_or_sensitive or is_enterprise
     requires_backup_dr = is_mission_critical or any(s in sensitivity_str for s in ["high", "critical"])
 
@@ -1860,16 +1887,17 @@ def heal_topology_gates(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]]
 
     # 2. Conditionally Ensure Route Tables and NSGs exist for subnets (ONLY if requires_advanced_security is true)
     if requires_advanced_security:
-        REAL_SUBNET_IDS = {"subnet-ingress", "subnet-mgmt", "subnet-app", "subnet-data", "subnet-pe"}
+        REAL_SUBNET_IDS = {"subnet-ingress", "subnet-mgmt",
+                           "subnet-app", "subnet-data", "subnet-pe"}
         subnet_nodes = [
             n for n in nodes
             if str(n.get("id", "")).lower() in REAL_SUBNET_IDS
         ]
-        
+
         for sub_node in subnet_nodes:
             sub_node_id = sub_node.get("id")
             sub_node_id_lower = str(sub_node_id).lower()
-            
+
             # Determine clean prefix/suffix for nsg and rt naming
             if sub_node_id_lower.startswith("subnet-"):
                 sub_name = sub_node_id[7:]
@@ -1877,10 +1905,11 @@ def heal_topology_gates(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]]
                 sub_name = sub_node_id[7:]
             else:
                 sub_name = sub_node_id
-                
+
             # Check NSG in this subnet
             has_nsg = any(
-                (parent == sub_node_id_lower and ("nsg" in nid or "nsg" in node_labels.get(nid, "")))
+                (parent == sub_node_id_lower and (
+                    "nsg" in nid or "nsg" in node_labels.get(nid, "")))
                 for nid, parent in [(str(n.get("id")).lower(), str(n.get("parentNode", "")).lower()) for n in nodes]
             )
             if not has_nsg:
@@ -1893,10 +1922,11 @@ def heal_topology_gates(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]]
                         "position": {"x": 30.0, "y": 60.0},
                         "data": {"label": f"Security Group ({sub_name.upper()})", "subnet": sub_node_id, "provider": provider}
                     })
-                
+
             # Check RT in this subnet
             has_rt = any(
-                (parent == sub_node_id_lower and ("rt-" in nid or "-rt" in nid or "route table" in node_labels.get(nid, "") or "route-table" in node_labels.get(nid, "")))
+                (parent == sub_node_id_lower and ("rt-" in nid or "-rt" in nid or "route table" in node_labels.get(
+                    nid, "") or "route-table" in node_labels.get(nid, "")))
                 for nid, parent in [(str(n.get("id")).lower(), str(n.get("parentNode", "")).lower()) for n in nodes]
             )
             if not has_rt:
@@ -1909,16 +1939,19 @@ def heal_topology_gates(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]]
                         "position": {"x": 200.0, "y": 60.0},
                         "data": {"label": f"Route Table ({sub_name.upper()})", "subnet": sub_node_id, "provider": provider}
                     })
-                
+
         # Update node collections after NSG/RT injections
         node_ids = {str(n.get("id")).lower() for n in nodes if n.get("id")}
-        node_labels = {str(n.get("id")).lower(): str(n.get("data", {}).get("label", "")).lower() for n in nodes}
-        node_types = {str(n.get("id")).lower(): str(n.get("type", "")) for n in nodes}
+        node_labels = {str(n.get("id")).lower(): str(
+            n.get("data", {}).get("label", "")).lower() for n in nodes}
+        node_types = {str(n.get("id")).lower(): str(
+            n.get("type", "")) for n in nodes}
 
     # 3. Ensure Key Vault exists if required by capabilities
     if "secrets_management" in required_caps or requires_advanced_security:
         has_kv = any(
-            t == "SecurityNode" and any(x in nid or x in node_labels.get(nid, "") for x in ["vault", "keyvault", "secret"])
+            t == "SecurityNode" and any(x in nid or x in node_labels.get(
+                nid, "") for x in ["vault", "keyvault", "secret"])
             for nid, t in node_types.items()
         )
         if not has_kv:
@@ -1932,11 +1965,12 @@ def heal_topology_gates(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]]
             node_ids.add("keyvault")
             node_labels["keyvault"] = "key vault (secrets)"
             node_types["keyvault"] = "SecurityNode"
-            
+
     # 4. Ensure Monitoring Node exists conditionally
     if requires_advanced_security or requires_backup_dr or "monitoring" in required_caps or any(t == "monitoringnode" for t in node_types.values()):
         has_mon = any(
-            t == "MonitoringNode" or any(x in nid or x in node_labels.get(nid, "") for x in ["monitor", "insights", "analytics"])
+            t == "MonitoringNode" or any(x in nid or x in node_labels.get(
+                nid, "") for x in ["monitor", "insights", "analytics"])
             for nid, t in node_types.items()
         )
         if not has_mon:
@@ -1950,11 +1984,12 @@ def heal_topology_gates(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]]
             node_ids.add("log-analytics")
             node_labels["log-analytics"] = "log analytics workspace"
             node_types["log-analytics"] = "MonitoringNode"
-            
+
     # 5. Ensure Backup Vault exists if required
     if "disaster_recovery" in required_caps or requires_backup_dr:
         has_backup = any(
-            any(x in nid for x in ["backup", "recovery", "vault"]) and "key" not in nid
+            any(x in nid for x in ["backup", "recovery",
+                "vault"]) and "key" not in nid
             for nid in node_ids
         )
         if not has_backup:
@@ -1968,14 +2003,16 @@ def heal_topology_gates(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]]
             node_ids.add("backup-vault")
             node_labels["backup-vault"] = "backup vault (recovery)"
             node_types["backup-vault"] = "StorageNode"
-            
+
     # 5b. Ensure WAF Policy exists if referenced in edges
     has_waf = any(
-        t == "SecurityNode" and any(x in nid or x in node_labels.get(nid, "") for x in ["waf", "waf-policy", "waf_policy"])
+        t == "SecurityNode" and any(x in nid or x in node_labels.get(
+            nid, "") for x in ["waf", "waf-policy", "waf_policy"])
         for nid, t in node_types.items()
     )
     if not has_waf:
-        referenced_waf = any("waf" in str(e.get("source")).lower() or "waf" in str(e.get("target")).lower() for e in edges)
+        referenced_waf = any("waf" in str(e.get("source")).lower(
+        ) or "waf" in str(e.get("target")).lower() for e in edges)
         if referenced_waf:
             nodes.append({
                 "id": "waf-policy",
@@ -1992,14 +2029,15 @@ def heal_topology_gates(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]]
     # 6. Ensure Private Endpoints exist conditionally
     if "secure_connectivity" in required_caps or requires_advanced_security:
         has_pe = any(
-            "pe-" in nid or "pe_" in nid or "private endpoint" in node_labels.get(nid, "")
+            "pe-" in nid or "pe_" in nid or "private endpoint" in node_labels.get(
+                nid, "")
             for nid in node_ids
         )
         if not has_pe:
             # Create private endpoints for database and storage if they exist
             db_nodes = [nid for nid, t in node_types.items() if t == "DatabaseNode"]
             storage_nodes = [nid for nid, t in node_types.items() if t == "StorageNode" and "backup" not in nid]
-            
+
             pe_count = 0
             if db_nodes:
                 pe_id = "pe-db"
@@ -2020,7 +2058,7 @@ def heal_topology_gates(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]]
                 node_ids.add(pe_id)
                 node_labels[pe_id] = "pe database connection"
                 node_types[pe_id] = "SecurityNode"
-                
+
             if storage_nodes:
                 pe_id = "pe-storage"
                 nodes.append({
@@ -2040,7 +2078,7 @@ def heal_topology_gates(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]]
                 node_ids.add(pe_id)
                 node_labels[pe_id] = "pe storage connection"
                 node_types[pe_id] = "SecurityNode"
-                
+
             if not pe_count:
                 # Inject a fallback PE to make sure subnet-pe is not empty
                 pe_id = "pe-fallback"
@@ -2057,7 +2095,8 @@ def heal_topology_gates(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]]
 
     # Clean up orphan edges
     node_ids = {str(n.get("id")).lower() for n in nodes if n.get("id")}
-    edges = [e for e in edges if str(e.get("source")).lower() in node_ids and str(e.get("target")).lower() in node_ids]
+    edges = [e for e in edges if str(e.get("source")).lower(
+    ) in node_ids and str(e.get("target")).lower() in node_ids]
 
     return nodes, edges
 
@@ -2070,27 +2109,31 @@ async def get_provider_status():
         "active_provider": provider.lower(),
         "model": manager.active_model,
         "fallback_count": len(manager.fallback_chain) if manager.fallback_chain else 0,
-        "last_error": None # For now just return None
+        "last_error": None  # For now just return None
     }
+
 
 @router.post('/generate-architecture', response_model=ArchitectureResponse)
 async def generate_architecture(requirements: RequirementInput, request: Request):
     request_id = str(uuid.uuid4())
     start_time = asyncio.get_event_loop().time()
     provider = requirements.cloud_provider.lower()
-    
-    logger.info(f"Pipeline Stage: Requirements Received. Request ID: {request_id}. Payload: {requirements.model_dump()}")
-    
+
+    logger.info(
+        f"Pipeline Stage: Requirements Received. Request ID: {request_id}. Payload: {requirements.model_dump()}")
+
     # 1. Check Cache
     cached = cache_manager.get(requirements)
     if cached:
         c_nodes = cached.get('nodes', [])
         if len(c_nodes) > 0:
             # Heal legacy/incomplete cached entry to ensure required containers exist
-            c_nodes = ensure_container_nodes(c_nodes, cached.get('cloud_provider', provider), requirements)
-            
+            c_nodes = ensure_container_nodes(c_nodes, cached.get(
+                'cloud_provider', provider), requirements)
+
             # Perform ID alignment for compute engine node
-            compute_type = getattr(requirements, "computeType", None) or getattr(requirements, "application_type", None) or "AKS"
+            compute_type = getattr(requirements, "computeType", None) or getattr(
+                requirements, "application_type", None) or "AKS"
             compute_type_lower = str(compute_type).lower()
             compute_target_id = "aks-cluster"
             if "app service" in compute_type_lower or "web app" in compute_type_lower:
@@ -2111,22 +2154,25 @@ async def generate_architecture(requirements: RequirementInput, request: Request
                 cached['edges'] = c_edges
 
             c_edges = cached.get('edges', [])
-            c_nodes = post_process_nodes(c_nodes, cached.get('cloud_provider', provider), requirements, c_edges)
+            c_nodes = post_process_nodes(c_nodes, cached.get(
+                'cloud_provider', provider), requirements, c_edges)
             c_nodes, c_edges = deduplicate_shared_resources(c_nodes, c_edges)
-            
+
             # Heal missing edges in the cached entry if edge count is low
             if len(c_edges) < 35:
-                reasoning_engine = InfrastructureReasoningEngine(cloud_provider=provider, requirements=requirements)
+                reasoning_engine = InfrastructureReasoningEngine(
+                    cloud_provider=provider, requirements=requirements)
                 raw_topology = reasoning_engine.synthesize_from_intent()
                 topology = reasoning_engine.normalize_topology(raw_topology)
                 det_edges = topology.get('edges', [])
-                
-                c_node_ids = {str(n.get("id")).lower() for n in c_nodes if n.get("id")}
+
+                c_node_ids = {str(n.get("id")).lower()
+                              for n in c_nodes if n.get("id")}
                 existing_edge_keys = {
                     (str(e.get("source")).lower(), str(e.get("target")).lower())
                     for e in c_edges if e.get("source") and e.get("target")
                 }
-                
+
                 merged_edges = list(c_edges)
                 for det_edge in det_edges:
                     src = str(det_edge.get("source", "")).lower()
@@ -2137,12 +2183,14 @@ async def generate_architecture(requirements: RequirementInput, request: Request
                             existing_edge_keys.add((src, tgt))
                 c_edges = merged_edges
                 cached['edges'] = c_edges
-            
+
             valid_node_ids = {n.get("id") for n in c_nodes if n.get("id")}
-            c_edges = [e for e in c_edges if e.get("source") in valid_node_ids and e.get("target") in valid_node_ids]
+            c_edges = [e for e in c_edges if e.get(
+                "source") in valid_node_ids and e.get("target") in valid_node_ids]
 
             cached['services'] = rebuild_services_registry(c_nodes)
-            cached['warnings'] = validate_and_gate_architecture(c_nodes, c_edges, cached.get('warnings', []), compute_type=getattr(requirements, 'computeType', None), database_type=getattr(requirements, 'database_type', None), requirements=requirements)
+            cached['warnings'] = validate_and_gate_architecture(c_nodes, c_edges, cached.get('warnings', []), compute_type=getattr(
+                requirements, 'computeType', None), database_type=getattr(requirements, 'database_type', None), requirements=requirements)
             cached['nodes'] = c_nodes
             cached['node_count'] = len(c_nodes)
             cached['subnet_count'] = _count_real_subnets(c_nodes)
@@ -2156,9 +2204,11 @@ async def generate_architecture(requirements: RequirementInput, request: Request
                 "deduplicated_nodes": len(c_nodes),
                 "deduplicated_edges": len(c_edges)
             }
-            
-            exec_ms = int((asyncio.get_event_loop().time() - start_time) * 1000)
-            perf_logger.log(request_id, 'Cache', exec_ms / 1000.0, True, [], [])
+
+            exec_ms = int(
+                (asyncio.get_event_loop().time() - start_time) * 1000)
+            perf_logger.log(request_id, 'Cache',
+                            exec_ms / 1000.0, True, [], [])
             cached['execution_time_ms'] = exec_ms
             return ArchitectureResponse(**cached)
 
@@ -2166,23 +2216,23 @@ async def generate_architecture(requirements: RequirementInput, request: Request
     llm_client = request.app.state.provider_manager
     provider = requirements.cloud_provider.lower()
     active_provider = getattr(llm_client, 'active_provider', 'None')
-    
+
     generation_mode = os.getenv('ARCHGEN_GENERATION_MODE', 'AI_ONLY')
     ai_enhanced = False
-    
+
     # Initialize variables that must be in outer scope
     nodes = []
     edges = []
     services = []
     validation_findings = []
-    
+
     raw_ai_nodes_count = 0
     raw_ai_edges_count = 0
     post_processed_nodes_count = 0
     post_processed_edges_count = 0
     deduplicated_nodes_count = 0
     deduplicated_edges_count = 0
-    
+
     # Check if provider exists
     if active_provider is None or active_provider.lower() in ['none', 'mock']:
         if generation_mode == 'AI_ONLY':
@@ -2195,61 +2245,78 @@ async def generate_architecture(requirements: RequirementInput, request: Request
                 }
             )
         else:
-            logger.info("No active LLM provider. Bypassing AI pipeline and using Deterministic Engine.")
+            logger.info(
+                "No active LLM provider. Bypassing AI pipeline and using Deterministic Engine.")
     else:
         try:
             from agents.requirement_analysis import RequirementAnalysisAgent
             from agents.architecture_planning import ArchitecturePlanningAgent
             from agents.topology_generation import TopologyGenerationAgent
-            
+
             req_agent = RequirementAnalysisAgent(client=llm_client)
             plan_agent = ArchitecturePlanningAgent(client=llm_client)
             topology_agent = TopologyGenerationAgent(client=llm_client)
-            
+
             logger.info("Starting Pure AI Requirement Analysis")
             analysis = await req_agent.analyze(requirements)
             if not isinstance(analysis, dict):
                 analysis = {}
             # Inject raw user requirements explicitly to guarantee the planning agent and topology agent get them properly
-            analysis["projectName"] = requirements.projectName or analysis.get("projectName") or "Enterprise Stack"
-            analysis["region"] = requirements.region or analysis.get("region") or analysis.get("deploymentRegion") or "East US"
-            analysis["resourceGroup"] = requirements.resourceGroup or analysis.get("resourceGroup") or "rg-production"
-            analysis["vnetCIDR"] = requirements.vnetCIDR or analysis.get("vnetCIDR") or "10.0.0.0/16"
-            analysis["computeType"] = requirements.computeType or analysis.get("computeType") or "AKS"
-            analysis["database_type"] = requirements.database_type or analysis.get("database_type") or analysis.get("databaseType") or "PostgreSQL"
-            analysis["cloud_provider"] = requirements.cloud_provider or analysis.get("cloud_provider") or "azure"
-            analysis["monthly_budget"] = requirements.monthly_budget or analysis.get("monthly_budget") or "500"
-            
-            logger.info(f"Pipeline Stage: Requirement Analysis Completed. Result: {analysis}")
-            
+            analysis["projectName"] = requirements.projectName or analysis.get(
+                "projectName") or "Enterprise Stack"
+            analysis["region"] = requirements.region or analysis.get(
+                "region") or analysis.get("deploymentRegion") or "East US"
+            analysis["resourceGroup"] = requirements.resourceGroup or analysis.get(
+                "resourceGroup") or "rg-production"
+            analysis["vnetCIDR"] = requirements.vnetCIDR or analysis.get(
+                "vnetCIDR") or "10.0.0.0/16"
+            analysis["computeType"] = requirements.computeType or analysis.get(
+                "computeType") or "AKS"
+            analysis["database_type"] = requirements.database_type or analysis.get(
+                "database_type") or analysis.get("databaseType") or "PostgreSQL"
+            analysis["cloud_provider"] = requirements.cloud_provider or analysis.get(
+                "cloud_provider") or "azure"
+            analysis["monthly_budget"] = requirements.monthly_budget or analysis.get(
+                "monthly_budget") or "500"
+
+            logger.info(
+                f"Pipeline Stage: Requirement Analysis Completed. Result: {analysis}")
+
             logger.info("Starting Pure AI Architecture Planning")
             plan = await plan_agent.plan(analysis)
-            logger.info(f"Pipeline Stage: Architecture Planning Completed. Plan: {plan}")
-            
+            logger.info(
+                f"Pipeline Stage: Architecture Planning Completed. Plan: {plan}")
+
             max_attempts = 3
             for attempt in range(1, max_attempts + 1):
-                logger.info(f"Topology Generation Attempt {attempt}/{max_attempts}")
+                logger.info(
+                    f"Topology Generation Attempt {attempt}/{max_attempts}")
                 try:
                     topology_result = await topology_agent.generate(
                         analyzed_requirements=analysis,
                         plan=plan,
                         validation_findings=validation_findings if validation_findings else None
                     )
-                    
-                    logger.info(f"Pipeline Stage: Raw AI Response Received on attempt {attempt}")
-                    print(f"ai_topology: {json.dumps(topology_result, indent=2) if isinstance(topology_result, dict) else str(topology_result)}")
-                    
+
+                    logger.info(
+                        f"Pipeline Stage: Raw AI Response Received on attempt {attempt}")
+                    print(
+                        f"ai_topology: {json.dumps(topology_result, indent=2) if isinstance(topology_result, dict) else str(topology_result)}")
+
                     nodes = topology_result.get('nodes', [])
                     edges = topology_result.get('edges', [])
                     services = topology_result.get('services', [])
-                    logger.info(f"Pre-flatten node count: {len(nodes) if isinstance(nodes, list) else 'non-list'}")
+                    logger.info(
+                        f"Pre-flatten node count: {len(nodes) if isinstance(nodes, list) else 'non-list'}")
                     # Flatten nested-tree responses from the AI (children arrays)
-                    nodes = flatten_nested_nodes(nodes) if isinstance(nodes, list) else []
-                    logger.info(f"Post-flatten node count: {len(nodes)}, ids: {[n.get('id') for n in nodes[:5]]}")
-
+                    nodes = flatten_nested_nodes(
+                        nodes) if isinstance(nodes, list) else []
+                    logger.info(
+                        f"Post-flatten node count: {len(nodes)}, ids: {[n.get('id') for n in nodes[:5]]}")
 
                 except Exception as e:
-                    logger.error(f"Topology Generation Agent failed on attempt {attempt}: {e}")
+                    logger.error(
+                        f"Topology Generation Agent failed on attempt {attempt}: {e}")
                     if attempt == max_attempts:
                         raw_resp = getattr(e, 'raw_response', None)
                         if generation_mode == 'AI_ONLY':
@@ -2265,32 +2332,35 @@ async def generate_architecture(requirements: RequirementInput, request: Request
                         else:
                             raise e
                     continue
-                    
+
                 if not isinstance(nodes, list):
                     nodes = []
                 if not isinstance(edges, list):
                     edges = []
                 if not isinstance(services, list):
                     services = []
-                    
+
                 raw_ai_nodes_count = len(nodes)
                 raw_ai_edges_count = len(edges)
-                logger.info(f"Pipeline Stage - Raw AI counts: nodes={raw_ai_nodes_count}, edges={raw_ai_edges_count}, services={len(services)}")
-                
+                logger.info(
+                    f"Pipeline Stage - Raw AI counts: nodes={raw_ai_nodes_count}, edges={raw_ai_edges_count}, services={len(services)}")
+
                 # Log unregistered node types
                 ALLOWED_TYPES = {
-                    "GatewayNode", "FrontendNode", "BackendNode", "DatabaseNode", "CacheNode", 
-                    "StorageNode", "SecurityNode", "MonitoringNode", "RegionGroupNode", 
+                    "GatewayNode", "FrontendNode", "BackendNode", "DatabaseNode", "CacheNode",
+                    "StorageNode", "SecurityNode", "MonitoringNode", "RegionGroupNode",
                     "ResourceGroupNode", "VNetGroupNode", "SubnetGroupNode"
                 }
                 for raw_node in nodes:
                     raw_type = raw_node.get("type")
                     if raw_type not in ALLOWED_TYPES:
-                        logger.warning(f"Unknown node type: {raw_type} for node ID: {raw_node.get('id')}")
+                        logger.warning(
+                            f"Unknown node type: {raw_type} for node ID: {raw_node.get('id')}")
                         print(f"Unknown node type: {raw_type}")
-                    
+
                 # Perform ID alignment for compute engine node
-                compute_type = getattr(requirements, "computeType", None) or getattr(requirements, "application_type", None) or "AKS"
+                compute_type = getattr(requirements, "computeType", None) or getattr(
+                    requirements, "application_type", None) or "AKS"
                 compute_type_lower = str(compute_type).lower()
                 compute_target_id = "aks-cluster"
                 if "app service" in compute_type_lower or "web app" in compute_type_lower:
@@ -2311,19 +2381,22 @@ async def generate_architecture(requirements: RequirementInput, request: Request
                             e["target"] = compute_target_id
 
                 # Use non-mutating validation and normalization layer instead of ensure_container_nodes/post_process_nodes
-                nodes, edges = normalize_and_validate_ai_topology(nodes, edges, provider, requirements)
-                
+                nodes, edges = normalize_and_validate_ai_topology(
+                    nodes, edges, provider, requirements)
+
                 post_processed_nodes_count = len(nodes)
                 post_processed_edges_count = len(edges)
-                logger.info(f"Pipeline Stage - Normalized AI counts: nodes={post_processed_nodes_count}, edges={post_processed_edges_count}")
-                        
+                logger.info(
+                    f"Pipeline Stage - Normalized AI counts: nodes={post_processed_nodes_count}, edges={post_processed_edges_count}")
+
                 # Deduplicate shared resources to clean up any duplicates generated by the LLM
                 nodes, edges = deduplicate_shared_resources(nodes, edges)
-                
+
                 deduplicated_nodes_count = len(nodes)
                 deduplicated_edges_count = len(edges)
-                logger.info(f"Pipeline Stage - Deduplicated counts: nodes={deduplicated_nodes_count}, edges={deduplicated_edges_count}")
-                
+                logger.info(
+                    f"Pipeline Stage - Deduplicated counts: nodes={deduplicated_nodes_count}, edges={deduplicated_edges_count}")
+
                 # Run validation engine as source of truth
                 validation_findings = validate_and_gate_architecture(
                     nodes,
@@ -2332,31 +2405,39 @@ async def generate_architecture(requirements: RequirementInput, request: Request
                     database_type=requirements.database_type,
                     requirements=analysis
                 )
-                logger.info(f"Pipeline Stage - Validation findings on attempt {attempt}: {validation_findings}")
-                
-                hard_failures = [f for f in validation_findings if not f.startswith("Recommendation:") and not f.startswith("Advisory:")]
+                logger.info(
+                    f"Pipeline Stage - Validation findings on attempt {attempt}: {validation_findings}")
+
+                hard_failures = [f for f in validation_findings if not f.startswith(
+                    "Recommendation:") and not f.startswith("Advisory:")]
                 if not hard_failures:
-                    logger.info(f"Topology successfully validated on Attempt {attempt} (with {len(validation_findings) - len(hard_failures)} advisory recommendations)")
+                    logger.info(
+                        f"Topology successfully validated on Attempt {attempt} (with {len(validation_findings) - len(hard_failures)} advisory recommendations)")
                     break
                 else:
-                    logger.warning(f"Validation failed on Attempt {attempt} due to hard failures: {hard_failures}")
-                    
+                    logger.warning(
+                        f"Validation failed on Attempt {attempt} due to hard failures: {hard_failures}")
+
             # If validation failed after 3 attempts, run the topology healing engine to guarantee valid compileable topology
-            hard_failures = [f for f in validation_findings if not f.startswith("Recommendation:") and not f.startswith("Advisory:")]
+            hard_failures = [f for f in validation_findings if not f.startswith(
+                "Recommendation:") and not f.startswith("Advisory:")]
             if hard_failures:
-                logger.info("Running topology healing engine to resolve validation findings")
-                nodes, edges = heal_topology_gates(nodes, edges, provider, requirements)
+                logger.info(
+                    "Running topology healing engine to resolve validation findings")
+                nodes, edges = heal_topology_gates(
+                    nodes, edges, provider, requirements)
                 # Re-run post process to snap any newly injected nodes and align IDs
-                nodes = post_process_nodes(nodes, provider, requirements, edges)
-                
+                nodes = post_process_nodes(
+                    nodes, provider, requirements, edges)
+
                 # Update counts after healing
                 post_processed_nodes_count = len(nodes)
                 post_processed_edges_count = len(edges)
                 deduplicated_nodes_count = len(nodes)
                 deduplicated_edges_count = len(edges)
-            
+
             ai_enhanced = True
-            
+
         except Exception as e:
             logger.error(f"AI Generation Pipeline encountered error: {e}")
             if generation_mode == 'AI_ONLY':
@@ -2373,47 +2454,56 @@ async def generate_architecture(requirements: RequirementInput, request: Request
             else:
                 logger.warning("Falling back to Deterministic Engine.")
                 ai_enhanced = False
-                
+
     # Deterministic Engine Fallback / Direct Execution
     if not ai_enhanced:
-        logger.info("Running Deterministic Engine (InfrastructureReasoningEngine)")
-        reasoning_engine = InfrastructureReasoningEngine(cloud_provider=provider, requirements=requirements)
+        logger.info(
+            "Running Deterministic Engine (InfrastructureReasoningEngine)")
+        reasoning_engine = InfrastructureReasoningEngine(
+            cloud_provider=provider, requirements=requirements)
         raw_topology = reasoning_engine.synthesize_from_intent()
         topology = reasoning_engine.normalize_topology(raw_topology)
-        
+
         nodes = topology.get('nodes', [])
         edges = topology.get('edges', [])
-        
+
         # Ensure container nodes and coordinates snap cleanly
         nodes = ensure_container_nodes(nodes, provider, requirements)
         nodes = post_process_nodes(nodes, provider, requirements, edges)
-        
+
         # Minimally set position, data, and style for all nodes to prevent frontend crash
         for idx, node in enumerate(nodes):
             node_data = node.get('data') or {}
             node['data'] = node_data
-            
+
             if 'position' not in node or not isinstance(node['position'], dict):
-                node['position'] = {'x': float((idx % 5) * 200), 'y': float((idx // 5) * 150)}
+                node['position'] = {'x': float(
+                    (idx % 5) * 200), 'y': float((idx // 5) * 150)}
             else:
                 node['position']['x'] = float(node['position'].get('x', 0.0))
                 node['position']['y'] = float(node['position'].get('y', 0.0))
-                
+
             if 'style' not in node or not isinstance(node['style'], dict):
                 node['style'] = {}
-                
+
             # Populate required metadata fields
-            node_data['resource_id'] = node_data.get('resource_id') or node.get('id', '')
-            node_data['resource_type'] = node_data.get('resource_type') or str(node.get('type', 'resource')).lower()
-            node_data['terraform_resource'] = node_data.get('terraform_resource') or ''
+            node_data['resource_id'] = node_data.get(
+                'resource_id') or node.get('id', '')
+            node_data['resource_type'] = node_data.get(
+                'resource_type') or str(node.get('type', 'resource')).lower()
+            node_data['terraform_resource'] = node_data.get(
+                'terraform_resource') or ''
             node_data['provider'] = node_data.get('provider') or provider
-            node_data['subnet'] = node_data.get('subnet') or node.get('parentNode', '') or ''
-            node_data['cost_estimate'] = node_data.get('cost_estimate') or node_data.get('cost', '') or ''
-            
+            node_data['subnet'] = node_data.get(
+                'subnet') or node.get('parentNode', '') or ''
+            node_data['cost_estimate'] = node_data.get(
+                'cost_estimate') or node_data.get('cost', '') or ''
+
             # Sanitization of other properties expected by frontend
             if 'estimated_monthly_cost' not in node_data:
                 try:
-                    cost_val = float(re.sub(r'[^\d.]', '', str(node_data.get('cost_estimate', '25'))))
+                    cost_val = float(re.sub(r'[^\d.]', '', str(
+                        node_data.get('cost_estimate', '25'))))
                     node_data['estimated_monthly_cost'] = cost_val
                 except Exception:
                     node_data['estimated_monthly_cost'] = 25.0
@@ -2421,9 +2511,9 @@ async def generate_architecture(requirements: RequirementInput, request: Request
                 node_data['public'] = False
             if 'private' not in node_data:
                 node_data['private'] = True
-                
+
         nodes, edges = deduplicate_shared_resources(nodes, edges)
-        
+
         # Populate counts for deterministic run
         raw_ai_nodes_count = 0
         raw_ai_edges_count = 0
@@ -2431,7 +2521,7 @@ async def generate_architecture(requirements: RequirementInput, request: Request
         post_processed_edges_count = len(edges)
         deduplicated_nodes_count = len(nodes)
         deduplicated_edges_count = len(edges)
-        
+
         services = rebuild_services_registry(nodes)
 
     # Final validation checks and warning list construction
@@ -2442,7 +2532,7 @@ async def generate_architecture(requirements: RequirementInput, request: Request
         database_type=requirements.database_type,
         requirements=requirements
     )
-    
+
     budget_val = 500.0
     try:
         budget_str = re.sub(r'[^\d.]', '', requirements.monthly_budget)
@@ -2451,8 +2541,9 @@ async def generate_architecture(requirements: RequirementInput, request: Request
     except Exception:
         pass
 
-    eval_plan = {'nodes': nodes, 'edges': edges, 'services': services, 'cloud_provider': provider}
-    
+    eval_plan = {'nodes': nodes, 'edges': edges,
+                 'services': services, 'cloud_provider': provider}
+
     # Defaults
     cost_res, complexity_res, secured_res, explanation_res = {}, {}, {}, {}
 
@@ -2473,10 +2564,14 @@ async def generate_architecture(requirements: RequirementInput, request: Request
 
             async def run_enrichments():
                 return await asyncio.gather(
-                    run_agent_safe(security_agent.optimize_security(eval_plan, requirements.app_description), {}),
-                    run_agent_safe(complexity_agent.audit(eval_plan, requirements.app_description), {}),
-                    run_agent_safe(cost_agent.optimize(eval_plan, requirements.app_description), {}),
-                    run_agent_safe(explanation_agent.explain(eval_plan, requirements.model_dump()), {})
+                    run_agent_safe(security_agent.optimize_security(
+                        eval_plan, requirements.app_description), {}),
+                    run_agent_safe(complexity_agent.audit(
+                        eval_plan, requirements.app_description), {}),
+                    run_agent_safe(cost_agent.optimize(
+                        eval_plan, requirements.app_description), {}),
+                    run_agent_safe(explanation_agent.explain(
+                        eval_plan, requirements.model_dump()), {})
                 )
 
             # 60 seconds max enrichment time
@@ -2485,28 +2580,34 @@ async def generate_architecture(requirements: RequirementInput, request: Request
             logger.warning(f'Optional AI Enrichment failed or timed out: {e}')
 
     valid_node_ids = {n.get("id") for n in nodes if n.get("id")}
-    edges = [e for e in edges if e.get("source") in valid_node_ids and e.get("target") in valid_node_ids]
+    edges = [e for e in edges if e.get(
+        "source") in valid_node_ids and e.get("target") in valid_node_ids]
 
     terraform_modules = list(set([n.get('type', 'Module') for n in nodes]))
 
     end_time = asyncio.get_event_loop().time()
     exec_ms = int((end_time - start_time) * 1000)
-    
+
     # 5. Architecture Quality Gate (Non-blocking Validation)
-    warnings_list = validate_and_gate_architecture(nodes, edges, complexity_res.get('warnings', []), compute_type=requirements.computeType, database_type=requirements.database_type, requirements=requirements)
+    warnings_list = validate_and_gate_architecture(nodes, edges, complexity_res.get(
+        'warnings', []), compute_type=requirements.computeType, database_type=requirements.database_type, requirements=requirements)
     if len(nodes) < 10:
-        warnings_list.append("Architecture generation returned insufficient workload resources.")
-        logger.warning("Architecture generation returned insufficient workload resources.")
-        
+        warnings_list.append(
+            "Architecture generation returned insufficient workload resources.")
+        logger.warning(
+            "Architecture generation returned insufficient workload resources.")
+
     services = rebuild_services_registry(nodes)
-    
+
     # 6. Phase 3: AI Validation Agent + Completeness Scores
     ai_recommendations = run_ai_validation_agent(nodes, edges, provider)
-    arch_scores = compute_architecture_scores(nodes, edges, warnings_list, provider, requirements=requirements)
-    
+    arch_scores = compute_architecture_scores(
+        nodes, edges, warnings_list, provider, requirements=requirements)
+
     # Dynamic cost calculation from individual nodes
-    dynamic_total_cost = arch_scores.get("total_estimated_cost", budget_val * 0.8)
-    
+    dynamic_total_cost = arch_scores.get(
+        "total_estimated_cost", budget_val * 0.8)
+
     # Build dynamic cost breakdown from nodes
     dynamic_breakdown = []
     for n in nodes:
@@ -2520,7 +2621,8 @@ async def generate_architecture(requirements: RequirementInput, request: Request
 
     # Determine provider/model names to return (never return mock)
     active_provider_val = active_provider if ai_enhanced else 'deterministic'
-    active_model_val = getattr(llm_client, 'active_model', 'Deterministic Engine') if ai_enhanced else 'Deterministic Engine'
+    active_model_val = getattr(
+        llm_client, 'active_model', 'Deterministic Engine') if ai_enhanced else 'Deterministic Engine'
     generation_source = f"pure_ai+{active_provider_val.lower()}"
 
     response_summary = {
@@ -2531,8 +2633,9 @@ async def generate_architecture(requirements: RequirementInput, request: Request
         "deduplicated_nodes": deduplicated_nodes_count,
         "deduplicated_edges": deduplicated_edges_count
     }
-    
-    logger.info(f"Pipeline Stage: API Response Ready. Response Summary: {response_summary}")
+
+    logger.info(
+        f"Pipeline Stage: API Response Ready. Response Summary: {response_summary}")
 
     resp_dict = {
         'nodes': nodes,
@@ -2571,24 +2674,30 @@ async def generate_architecture(requirements: RequirementInput, request: Request
 
     return ArchitectureResponse(**resp_dict)
 
+
 @router.post('/generate-terraform', response_model=TerraformResponse)
 async def generate_terraform(request: TerraformRequest):
     try:
-        nodes_dict = [node.model_dump() if hasattr(node, "model_dump") else node for node in request.nodes]
-        edges_dict = [edge.model_dump() if hasattr(edge, "model_dump") else edge for edge in request.edges]
-        services_dict = [svc.model_dump() if hasattr(svc, "model_dump") else svc for svc in request.services]
+        nodes_dict = [node.model_dump() if hasattr(
+            node, "model_dump") else node for node in request.nodes]
+        edges_dict = [edge.model_dump() if hasattr(
+            edge, "model_dump") else edge for edge in request.edges]
+        services_dict = [svc.model_dump() if hasattr(
+            svc, "model_dump") else svc for svc in request.services]
 
         # Run validation engine as source of truth. Compile only approved architectures.
         # Only block on hard failures — advisory recommendations (Recommendation:/Advisory: prefix) are non-blocking.
-        validation_findings = validate_and_gate_architecture(nodes_dict, edges_dict)
-        hard_failures = [f for f in validation_findings if not f.startswith("Recommendation:") and not f.startswith("Advisory:")]
+        validation_findings = validate_and_gate_architecture(
+            nodes_dict, edges_dict)
+        hard_failures = [f for f in validation_findings if not f.startswith(
+            "Recommendation:") and not f.startswith("Advisory:")]
         if hard_failures:
-            logger.warning(f"Terraform compilation blocked due to hard failures: {hard_failures}")
+            logger.warning(
+                f"Terraform compilation blocked due to hard failures: {hard_failures}")
             raise HTTPException(
                 status_code=400,
                 detail=f"Architecture validation failed. Compilation blocked. Findings: {', '.join(hard_failures)}"
             )
-
 
         rendered = tf_engine.generate(
             nodes=nodes_dict,
@@ -2600,7 +2709,8 @@ async def generate_terraform(request: TerraformRequest):
         drift_warnings = rendered.get('warnings', [])
         # If there is any drift/incompatibility and force_regenerate is False, block compilation and return 400
         if drift_warnings and not request.force_regenerate:
-            logger.warning(f"Terraform compilation blocked due to drift/incompatibilities: {drift_warnings}")
+            logger.warning(
+                f"Terraform compilation blocked due to drift/incompatibilities: {drift_warnings}")
             raise HTTPException(
                 status_code=400,
                 detail=f"Architecture drift/incompatibilities detected. Findings: {', '.join(drift_warnings)}"
@@ -2620,11 +2730,12 @@ async def generate_terraform(request: TerraformRequest):
         logger.error(f'HCL compilation failed: {e}')
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @router.post('/optimize-cost')
 async def optimize_cost(payload: Dict[str, Any], request: Request):
     try:
         nodes = payload.get('nodes', [])
-        
+
         # Base pricing catalog mapping
         catalog = {
             "GatewayNode": 60.0,
@@ -2644,7 +2755,7 @@ async def optimize_cost(payload: Dict[str, Any], request: Request):
             n_type = node.get("type", "")
             if n_type in ["RegionGroupNode", "ResourceGroupNode", "VNetGroupNode", "SubnetGroupNode"]:
                 continue
-            
+
             label = node.get("data", {}).get("label", n_type)
             # Check custom metadata pricing tier
             meta = node.get("data", {}).get("customMetadata") or {}
@@ -2670,7 +2781,8 @@ async def optimize_cost(payload: Dict[str, Any], request: Request):
         ]
 
         if total > 500.0:
-            recommendations.append("Consolidate multiple small databases into a single PostgreSQL Flexible Server database server.")
+            recommendations.append(
+                "Consolidate multiple small databases into a single PostgreSQL Flexible Server database server.")
 
         return {
             "estimated_monthly_cost": total,
@@ -2681,18 +2793,20 @@ async def optimize_cost(payload: Dict[str, Any], request: Request):
     except Exception as e:
         return {'error': str(e)}
 
+
 @router.post('/validate-architecture')
 async def validate_architecture(payload: Dict[str, Any], request: Request):
     try:
         nodes = payload.get('nodes', [])
         edges = payload.get('edges', [])
-        
+
         findings = []
         score = 100
 
         # Extract node types and IDs
         node_types = {n.get("id"): n.get("type") for n in nodes}
-        node_labels = {n.get("id"): str(n.get("data", {}).get("label") or "").lower() for n in nodes}
+        node_labels = {n.get("id"): str(n.get("data", {}).get(
+            "label") or "").lower() for n in nodes}
 
         # Detect cloud provider from node metadata
         provider = "azure"
@@ -2704,7 +2818,8 @@ async def validate_architecture(payload: Dict[str, Any], request: Request):
 
         # 1. Check Secrets Vault Presence
         vault_keywords = ["vault", "secret"]
-        has_vault = any(t == "SecurityNode" and any(k in node_labels.get(nid, "") for k in vault_keywords) for nid, t in node_types.items())
+        has_vault = any(t == "SecurityNode" and any(k in node_labels.get(
+            nid, "") for k in vault_keywords) for nid, t in node_types.items())
         if not has_vault:
             score -= 15
             if provider == "aws":
@@ -2716,7 +2831,7 @@ async def validate_architecture(payload: Dict[str, Any], request: Request):
             else:
                 vault_name = "Azure Key Vault"
                 remediation = "Deploy a dedicated Key Vault node inside the management subnet to encrypt resource keys."
-                
+
             findings.append({
                 "severity": "High",
                 "description": f"Secrets vault repository ({vault_name}) is missing.",
@@ -2725,8 +2840,9 @@ async def validate_architecture(payload: Dict[str, Any], request: Request):
 
         # 2. Check Database exposure and replica standby
         db_nodes = [nid for nid, t in node_types.items() if t == "DatabaseNode"]
-        has_replica = any("replica" in node_labels.get(db_id, "") for db_id in db_nodes)
-        
+        has_replica = any("replica" in node_labels.get(db_id, "")
+                          for db_id in db_nodes)
+
         if db_nodes and not has_replica:
             score -= 10
             findings.append({
@@ -2738,7 +2854,8 @@ async def validate_architecture(payload: Dict[str, Any], request: Request):
         # 3. Check for public databases
         for db_id in db_nodes:
             # Check if database has incoming edge from internet or gateway without an app cluster
-            incoming = [e.get("source") for e in edges if e.get("target") == db_id]
+            incoming = [e.get("source")
+                        for e in edges if e.get("target") == db_id]
             for source in incoming:
                 if node_types.get(source) in ["GatewayNode"]:
                     score -= 20
@@ -2750,7 +2867,8 @@ async def validate_architecture(payload: Dict[str, Any], request: Request):
 
         # 4. Check for WAF at Ingress
         waf_keywords = ["waf", "armor", "firewall"]
-        has_waf = any(any(k in label for k in waf_keywords) for label in node_labels.values())
+        has_waf = any(any(k in label for k in waf_keywords)
+                      for label in node_labels.values())
         if not has_waf:
             score -= 10
             if provider == "aws":
@@ -2762,7 +2880,7 @@ async def validate_architecture(payload: Dict[str, Any], request: Request):
             else:
                 waf_name = "Azure WAF"
                 remediation = "Inject an Azure WAF security layer before the Application Gateway load balancer."
-                
+
             findings.append({
                 "severity": "Medium",
                 "description": f"Web Application Firewall ({waf_name}) is not configured at ingress gateway boundaries.",
@@ -2770,8 +2888,10 @@ async def validate_architecture(payload: Dict[str, Any], request: Request):
             })
 
         # 5. Check for Network Security Groups (NSGs) / Security Groups / Firewalls
-        sg_keywords = ["nsg", "security group", "firewall", "-sg", "sg-", "sec-group"]
-        has_nsgs = any(any(k in label for k in sg_keywords) for label in node_labels.values())
+        sg_keywords = ["nsg", "security group",
+                       "firewall", "-sg", "sg-", "sec-group"]
+        has_nsgs = any(any(k in label for k in sg_keywords)
+                       for label in node_labels.values())
         if not has_nsgs:
             score -= 10
             if provider == "aws":
@@ -2783,7 +2903,7 @@ async def validate_architecture(payload: Dict[str, Any], request: Request):
             else:
                 sg_name = "Network Security Groups (NSGs)"
                 remediation = "Associate a Network Security Group (NSG) with each Subnet node to define inbound/outbound rules."
-                
+
             findings.append({
                 "severity": "Medium",
                 "description": f"Subnet access control policies ({sg_name}) are missing from the subnets.",
@@ -2822,6 +2942,7 @@ async def validate_architecture(payload: Dict[str, Any], request: Request):
     except Exception as e:
         return {'error': str(e)}
 
+
 @router.post('/explain-architecture')
 async def explain_architecture(payload: Dict[str, Any], request: Request):
     llm_client = request.app.state.provider_manager
@@ -2835,6 +2956,7 @@ async def explain_architecture(payload: Dict[str, Any], request: Request):
         return await explanation_agent.explain(plan, reqs)
     except Exception as e:
         return {'error': str(e)}
+
 
 @router.post('/ai-assist')
 async def ai_assist(payload: Dict[str, Any], request: Request):
@@ -2882,7 +3004,8 @@ async def ai_assist(payload: Dict[str, Any], request: Request):
         elif action == "add_ha":
             # Inject Database replica
             has_rep = any("replica" in str(n.get("id")).lower() for n in nodes)
-            db_primary = next((n for n in nodes if n.get("type") == "DatabaseNode"), None)
+            db_primary = next(
+                (n for n in nodes if n.get("type") == "DatabaseNode"), None)
             if db_primary and not has_rep:
                 rep_id = f"db-replica-{int(asyncio.get_event_loop().time())}"
                 updated_nodes.append({

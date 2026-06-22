@@ -4,6 +4,7 @@ from prompts.templates import ARCHITECTURE_REASONING_PROMPT
 from typing import Dict, Any, Optional
 from utils.llm_provider import AIProvider
 
+
 class ArchitectureReasoningAgent(BaseAgent):
     def __init__(self, client: Optional[AIProvider] = None):
         super().__init__(

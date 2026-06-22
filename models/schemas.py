@@ -1,8 +1,6 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import List, Dict, Any, Optional
-from uuid import uuid4
 
-from pydantic import BaseModel, Field, field_validator
 
 class RequirementInput(BaseModel):
     app_description: str
@@ -29,7 +27,8 @@ class RequirementInput(BaseModel):
     @classmethod
     def validate_app_description(cls, v: str) -> str:
         if len(v.strip()) < 15:
-            raise ValueError('Application description must be at least 15 characters long to ensure adequate context.')
+            raise ValueError(
+                'Application description must be at least 15 characters long to ensure adequate context.')
         return v
 
     @field_validator('monthly_budget')
@@ -38,7 +37,8 @@ class RequirementInput(BaseModel):
         import re
         cleaned = re.sub(r'[^\d.]', '', v)
         if not cleaned:
-            raise ValueError('Monthly budget must contain a valid numeric amount.')
+            raise ValueError(
+                'Monthly budget must contain a valid numeric amount.')
         try:
             val = float(cleaned)
             if val <= 0:
@@ -52,7 +52,8 @@ class RequirementInput(BaseModel):
     def validate_cloud_provider(cls, v: str) -> str:
         provider = v.strip().lower()
         if provider not in ['aws', 'azure', 'gcp']:
-            raise ValueError('Cloud provider must be one of: aws, azure, or gcp.')
+            raise ValueError(
+                'Cloud provider must be one of: aws, azure, or gcp.')
         return provider
 
 
@@ -87,6 +88,7 @@ class ArchitectureResponse(BaseModel):
     response_summary: Optional[Dict[str, Any]] = None
     requirement_coverage_score: Optional[int] = 100
 
+
 class NodeModel(BaseModel):
     id: str
     type: Optional[str] = "default"
@@ -95,6 +97,7 @@ class NodeModel(BaseModel):
     parentNode: Optional[str] = None
 
     model_config = {"extra": "allow"}
+
 
 class EdgeModel(BaseModel):
     id: Optional[str] = None          # Auto-generated if not provided
@@ -111,12 +114,14 @@ class EdgeModel(BaseModel):
         if not self.id:
             self.id = f"edge-{self.source}-{self.target}"
 
+
 class ServiceModel(BaseModel):
     name: Optional[str] = ""
     category: Optional[str] = ""
     description: Optional[str] = ""
 
     model_config = {"extra": "allow"}
+
 
 class TerraformRequest(BaseModel):
     nodes: List[NodeModel]
@@ -125,6 +130,7 @@ class TerraformRequest(BaseModel):
     cloud_provider: str
     force_regenerate: Optional[bool] = False
 
+
 class TerraformResponse(BaseModel):
     main_tf: str
     variables_tf: str
@@ -132,6 +138,7 @@ class TerraformResponse(BaseModel):
     terraform_tfvars: str
     instructions: str
     warnings: Optional[List[str]] = []
+
 
 class AiAssistRequest(BaseModel):
     nodes: List[NodeModel]

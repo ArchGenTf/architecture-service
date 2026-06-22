@@ -1,13 +1,13 @@
 import time
 import os
-import uuid
-from typing import Dict, Any
+
 
 class PerformanceLogger:
     def __init__(self):
-        self.log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logs')
+        self.log_dir = os.path.join(os.path.dirname(
+            os.path.dirname(__file__)), 'logs')
         os.makedirs(self.log_dir, exist_ok=True)
-        
+
     def log(self, request_id: str, provider: str, duration: float, cache_hit: bool, fallback_chain: list, errors: list):
         fpath = os.path.join(self.log_dir, 'performance.log')
         data = {

@@ -4,6 +4,7 @@ from prompts.templates import SECURITY_OPTIMIZATION_PROMPT
 from typing import Dict, Any, Optional
 from utils.llm_provider import AIProvider
 
+
 class SecurityOptimizationAgent(BaseAgent):
     def __init__(self, client: Optional[AIProvider] = None):
         super().__init__(
