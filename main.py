@@ -62,5 +62,11 @@ async def healthz():
     manager = app.state.provider_manager
     return await manager.health_check()
 
+
+@app.get("/ready")
+@app.get("/readyz")
+async def ready():
+    return {"status": "ready"}
+
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8003)
