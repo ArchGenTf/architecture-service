@@ -10,14 +10,14 @@ The core API routes are defined in [routes/api.py](file:///c:/Users/Praveen/Desk
 
 ```mermaid
 graph TD
-    Req[User Request] -->|Analyze| Agent1[RequirementAnalysisAgent]
-    Agent1 -->|Define Spec| Agent2[ArchitecturePlanningAgent]
-    Agent2 -->|Generate Canvas| Agent3[TopologyGenerationAgent]
-    Agent3 -->|Validate & Optimize| Orchestrator{Validation Gate}
-    Orchestrator -->|Cost Audit| Agent4[CostOptimizationAgent]
-    Orchestrator -->|Security Check| Agent5[SecurityOptimizationAgent]
-    Orchestrator -->|Complexity Check| Agent6[ComplexityAuditorAgent]
-    Orchestrator -->|Describe Choices| Agent7[ArchitectureExplanationAgent]
+    Req[User Request] -->|"Analyze"| Agent1[RequirementAnalysisAgent]
+    Agent1 -->|"Define Spec"| Agent2[ArchitecturePlanningAgent]
+    Agent2 -->|"Generate Canvas"| Agent3[TopologyGenerationAgent]
+    Agent3 -->|"Validate & Optimize"| Orchestrator{Validation Gate}
+    Orchestrator -->|"Cost Audit"| Agent4[CostOptimizationAgent]
+    Orchestrator -->|"Security Check"| Agent5[SecurityOptimizationAgent]
+    Orchestrator -->|"Complexity Check"| Agent6[ComplexityAuditorAgent]
+    Orchestrator -->|"Describe Choices"| Agent7[ArchitectureExplanationAgent]
 ```
 
 ### Specialized Agents:
